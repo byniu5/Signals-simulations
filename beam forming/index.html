@@ -1,0 +1,773 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Beam steering – 4-element phased array</title>
+<style>
+  :root {
+    --bg: #0a0e16;
+    --panel: #111827;
+    --panel-2: #0d1320;
+    --line: #1f2a3d;
+    --text: #e6eaf2;
+    --muted: #93a0b8;
+    --accent: #38bdf8;
+    --accent-2: #fbbf24;
+    --good: #34d399;
+    --warn: #f87171;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header.top { max-width: 1360px; margin: 0 auto; padding: 22px 20px 14px; }
+  header.top h1 { margin: 0 0 4px; font-size: 1.5rem; letter-spacing: .2px; }
+  header.top p { margin: 0; color: var(--muted); max-width: 70ch; }
+
+  .layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 20px;
+    max-width: 1360px;
+    margin: 0 auto;
+    padding: 0 20px 20px;
+    align-items: start;
+  }
+  @media (max-width: 980px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+
+  /* ---- stage ---- */
+  .stage {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3 / 2;
+    border-radius: 12px;
+    overflow: hidden;
+    background: #0b0f1c;
+    border: 1px solid var(--line);
+  }
+  .stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px;
+    margin-top: 12px; padding: 10px 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  }
+  .bar .group { display: flex; align-items: center; gap: 8px; }
+  .bar label.chk { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: .9rem; cursor: pointer; }
+  .bar label.chk input { accent-color: var(--accent); }
+
+  /* ---- cards / controls ---- */
+  .side { display: flex; flex-direction: column; gap: 14px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .card h2 {
+    margin: 0 0 10px; font-size: .78rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+  }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row + .row { margin-top: 8px; }
+  .row .name { width: 82px; white-space: nowrap; color: var(--muted); font-size: .9rem; flex: none; }
+  input[type=range] { flex: 1; min-width: 0; accent-color: var(--accent); }
+  output { font-variant-numeric: tabular-nums; min-width: 58px; text-align: right; font-size: .92rem; }
+
+  button {
+    font: inherit; font-size: .88rem; color: var(--text);
+    background: #172033; border: 1px solid #2a3753; border-radius: 8px;
+    padding: 5px 11px; cursor: pointer;
+  }
+  button:hover { background: #1d2a43; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.on { background: #0e3a52; border-color: var(--accent); color: #d9f2ff; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .seg { display: inline-flex; }
+  .seg button { border-radius: 0; }
+  .seg button:first-child { border-radius: 8px 0 0 8px; }
+  .seg button:last-child { border-radius: 0 8px 8px 0; border-left: 0; }
+
+  .prow { display: flex; align-items: center; gap: 10px; }
+  .prow + .prow { margin-top: 6px; }
+  .tag {
+    flex: none; width: 24px; height: 24px; border-radius: 50%;
+    display: grid; place-items: center; font-size: .8rem; font-weight: 700;
+    background: #2b2108; border: 1.5px solid var(--accent-2); color: var(--accent-2);
+  }
+  .dial { width: 34px; height: 34px; flex: none; }
+  .dial circle:first-child { fill: #0b1220; stroke: #2a3753; stroke-width: 1.2; }
+  .dial .ref { stroke: #2a3753; stroke-width: 1; }
+  .dial .needle { stroke: var(--accent-2); stroke-width: 2; stroke-linecap: round; }
+  .dial .tip { fill: var(--accent-2); }
+
+  .hint { color: var(--muted); font-size: .82rem; margin: 8px 0 0; }
+  .status { margin-top: 8px; font-size: .84rem; color: var(--muted); }
+  .status b { color: var(--text); font-weight: 600; }
+
+  .polar-wrap { width: 100%; max-width: 330px; aspect-ratio: 1 / 1; margin: 0 auto; }
+  .polar-wrap canvas { width: 100%; height: 100%; display: block; }
+  .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 10px; }
+  .stat { background: var(--panel-2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; }
+  .stat span { display: block; font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .stat strong { font-size: 1.02rem; font-variant-numeric: tabular-nums; }
+  .badge {
+    display: none; margin-top: 10px; padding: 6px 10px; border-radius: 8px; font-size: .84rem;
+    background: #3b1717; border: 1px solid var(--warn); color: #fecaca;
+  }
+  .badge.show { display: block; }
+
+  /* ---- notes ---- */
+  .notes { max-width: 1360px; margin: 0 auto; padding: 0 20px 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 980px) { .notes { grid-template-columns: 1fr; } }
+  .notes h2 { margin: 0 0 8px; font-size: 1.05rem; }
+  .notes p, .notes li { color: #c3cce0; }
+  .notes li { margin: 5px 0; }
+  .notes ol { padding-left: 20px; margin: 0; }
+  .eq {
+    margin: 10px 0; padding: 8px 12px; background: var(--panel-2); border: 1px solid var(--line);
+    border-radius: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92rem;
+    overflow-x: auto; white-space: nowrap;
+  }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <h1>Radio beam steering with a 4-element array</h1>
+  <p>Four antennas transmit the same signal. Shift the phase of each one and the waves reinforce each other in a different
+     direction – the beam is steered without moving anything.</p>
+</header>
+
+<main class="layout">
+  <section>
+    <div class="stage" id="stage">
+      <canvas id="field" aria-label="Interference pattern of the four-element array"></canvas>
+      <canvas id="overlay" aria-hidden="true"></canvas>
+    </div>
+
+    <div class="bar">
+      <div class="group">
+        <button id="playBtn" type="button" aria-pressed="true">❚❚ Pause</button>
+        <label class="chk" style="gap:8px">Speed
+          <input id="speed" type="range" min="0.1" max="3" step="0.1" value="1" style="width:100px" aria-label="Animation speed">
+        </label>
+      </div>
+      <div class="group seg" role="group" aria-label="View">
+        <button id="viewField" type="button" class="on" title="Instantaneous field – you see the waves travelling">Wavefronts</button>
+        <button id="viewInt" type="button" title="Time-averaged power – the fixed interference pattern">Intensity</button>
+      </div>
+      <label class="chk" title="Amplitude of a 2D cylindrical wave falls as 1/√r"><input id="decay" type="checkbox" checked> Distance fade</label>
+      <label class="chk" title="Without a reflector the array also radiates to the left"><input id="back" type="checkbox"> Radiate backwards</label>
+      <label class="chk"><input id="guides" type="checkbox" checked> Guides</label>
+    </div>
+  </section>
+
+  <aside class="side">
+    <section class="card">
+      <h2>Steering</h2>
+      <div class="row">
+        <span class="name">Angle θ₀</span>
+        <input id="steer" type="range" min="-85" max="85" step="0.5" value="0" aria-label="Steering angle">
+        <output id="steerOut">0.0°</output>
+      </div>
+      <div class="chips">
+        <button type="button" data-preset="0">Broadside 0°</button>
+        <button type="button" data-preset="20">+20°</button>
+        <button type="button" data-preset="45">+45°</button>
+        <button type="button" data-preset="-30">−30°</button>
+        <button type="button" data-preset="alt" title="0°, 180°, 0°, 180° – neighbours in antiphase">Alternating</button>
+        <button type="button" id="sweepBtn" aria-pressed="false">Auto-sweep</button>
+      </div>
+      <p class="status" id="modeStatus"></p>
+    </section>
+
+    <section class="card">
+      <h2>Phase of each element</h2>
+      <div id="phaseRows"></div>
+      <p class="hint">Drag any slider by hand – the steering angle then switches to “manual”. Element 1 is the top one.</p>
+    </section>
+
+    <section class="card">
+      <h2>Array geometry</h2>
+      <div class="row">
+        <span class="name">Spacing d</span>
+        <input id="spacing" type="range" min="0.2" max="1.5" step="0.01" value="0.5" aria-label="Element spacing in wavelengths">
+        <output id="spacingOut">0.50 λ</output>
+      </div>
+      <p class="hint">Rule of thumb: keep d ≤ λ/2 so that only one beam is formed.</p>
+    </section>
+
+    <section class="card">
+      <h2>Far-field pattern</h2>
+      <div class="polar-wrap"><canvas id="polar" aria-label="Polar plot of the array factor"></canvas></div>
+      <div class="stats">
+        <div class="stat"><span>Main beam</span><strong id="outBeam">0°</strong></div>
+        <div class="stat"><span>−3 dB width</span><strong id="outBW">–</strong></div>
+        <div class="stat"><span>Phase step</span><strong id="outStep">0°</strong></div>
+      </div>
+      <div class="badge" id="gratingBadge"></div>
+    </section>
+  </aside>
+</main>
+
+<section class="notes">
+  <div class="card">
+    <h2 style="color:var(--text);font-size:1.05rem;text-transform:none;letter-spacing:0">How it works</h2>
+    <p>Every element is a point source sending out a circular wave. At any point of the plane the total field is the sum of
+       the four waves, each with its own travel distance <i>rₙ</i> and its own phase offset <i>φₙ</i>:</p>
+    <div class="eq">E(x, y, t) = Σₙ aₙ · cos(ωt − 2π·rₙ/λ + φₙ)</div>
+    <p>Far away, the distances differ by <i>yₙ·sin θ</i>, so the waves add in phase in the direction where the geometric
+       delay is cancelled by the electrical phase shift:</p>
+    <div class="eq">φₙ = −2π · (yₙ / λ) · sin θ₀      →   Δφ = 2π · (d / λ) · sin θ₀ between neighbours</div>
+    <p>The polar plot is exactly this sum evaluated at infinity (the “array factor”). The coloured picture is the same sum evaluated
+       everywhere – so you can see the beam forming out of the interference of four circular waves.</p>
+  </div>
+  <div class="card">
+    <h2 style="color:var(--text);font-size:1.05rem;text-transform:none;letter-spacing:0">Things to try</h2>
+    <ol>
+      <li>Put the array in <b>Broadside</b> (all phases 0°) – the beam goes straight ahead. Watch the wavefronts: they are parallel to the array.</li>
+      <li>Drag the <b>steering angle</b>. The four phases follow a linear ramp and the wavefront tilts together with the beam.</li>
+      <li>Now go manual: set the phases to 0°, 45°, 90°, 135° (top to bottom) and check the main-beam readout against the formula above.</li>
+      <li>Switch to <b>Intensity</b> to see the static lobe structure, then compare it with the polar plot.</li>
+      <li>Increase the spacing beyond 0.5 λ – extra <b>grating lobes</b> appear. At d = 1 λ with 0° steering the beam also leaks sideways.</li>
+      <li>Try the <b>Alternating</b> preset: neighbours in antiphase split the energy into two beams pointing sideways.</li>
+      <li>Enable <b>Auto-sweep</b> to see an electronically scanned beam, as in radar and 5G base stations.</li>
+    </ol>
+  </div>
+</section>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ------------------------------------------------------------------ *
+   *  Constants
+   * ------------------------------------------------------------------ */
+  const N = 4;                       // number of antenna elements
+  const W = 600, H = 400;            // field buffer size in pixels
+  const PPW = 30;                    // buffer pixels per wavelength  -> view = 20 λ × 13.3 λ
+  const X0 = Math.round(W * 0.13);   // x position of the array in the buffer
+  const Y0 = H / 2;                  // array is centred vertically
+  const TAU = Math.PI * 2, DEG = Math.PI / 180;
+  const FREQ = 0.8;                  // visual wave frequency (cycles/s at speed 1)
+  const R_REF = 4;                   // distance (λ) at which a fully coherent beam reaches full colour scale
+  const SWEEP_AMP = 60, SWEEP_PERIOD = 12;   // auto-sweep: ±60° in 12 s
+  const SUB = ['₁', '₂', '₃', '₄'];
+
+  /* ------------------------------------------------------------------ *
+   *  State
+   * ------------------------------------------------------------------ */
+  const state = {
+    d: 0.5,            // element spacing [λ]
+    steer: 0,          // steering angle [deg]
+    mode: 'auto',      // 'auto': phases follow the steering angle · 'manual': phases set by hand
+    phase: [0, 0, 0, 0],   // element phases [deg]
+    view: 'field',     // 'field' | 'intensity'
+    decay: true,       // 1/√r amplitude fall-off
+    back: false,       // also radiate to the left of the array
+    guides: true,
+    playing: !window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    speed: 1,
+    sweep: false,
+  };
+  let omegaT = 0.6;    // current wave phase [rad]
+  let sweepT = 0;
+
+  const elemY = i => ((N - 1) / 2 - i) * state.d;      // element position along the array, +y = up, in λ
+  const wrap = p => (((p + 180) % 360) + 360) % 360 - 180;
+  const fmtSigned = (v, n = 0) => {
+    const s = Math.abs(v).toFixed(n);
+    return parseFloat(s) === 0 ? s : (v < 0 ? '−' : '+') + s;
+  };
+
+  /* ------------------------------------------------------------------ *
+   *  DOM
+   * ------------------------------------------------------------------ */
+  const $ = s => document.querySelector(s);
+  const stage = $('#stage'), fieldCv = $('#field'), overlayCv = $('#overlay'), polarCv = $('#polar');
+  const steerEl = $('#steer'), steerOut = $('#steerOut'), spacingEl = $('#spacing'), spacingOut = $('#spacingOut');
+  const playBtn = $('#playBtn'), speedEl = $('#speed'), sweepBtn = $('#sweepBtn');
+  const viewFieldBtn = $('#viewField'), viewIntBtn = $('#viewInt');
+  const modeStatus = $('#modeStatus'), outBeam = $('#outBeam'), outBW = $('#outBW'), outStep = $('#outStep');
+  const badge = $('#gratingBadge');
+
+  fieldCv.width = W; fieldCv.height = H;
+  const fctx = fieldCv.getContext('2d');
+  const img = fctx.createImageData(W, H);
+  const px32 = new Uint32Array(img.data.buffer);     // assumes little-endian (every browser platform in practice)
+
+  // one row of controls per element: tag · slider · readout · phasor dial
+  const phaseRows = [];
+  for (let i = 0; i < N; i++) {
+    const row = document.createElement('div');
+    row.className = 'prow';
+    row.innerHTML =
+      `<span class="tag">${i + 1}</span>` +
+      `<input type="range" min="-180" max="180" step="1" value="0" aria-label="Phase of element ${i + 1}">` +
+      `<output>0°</output>` +
+      `<svg class="dial" viewBox="-20 -20 40 40" aria-hidden="true"><circle r="17"/>` +
+      `<line class="ref" x1="0" y1="0" x2="17" y2="0"/><line class="needle" x1="0" y1="0" x2="15" y2="0"/>` +
+      `<circle class="tip" r="2.6" cx="15" cy="0"/></svg>`;
+    $('#phaseRows').appendChild(row);
+    const slider = row.querySelector('input');
+    slider.addEventListener('input', () => {
+      state.sweep = false;
+      state.mode = 'manual';
+      state.phase[i] = +slider.value;
+      dirty.phase = true;
+      syncUI();
+    });
+    phaseRows.push({ slider, out: row.querySelector('output'),
+                     needle: row.querySelector('.needle'), tip: row.querySelector('.tip') });
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Colour maps
+   * ------------------------------------------------------------------ */
+  // stops: [position 0..1, [r, g, b]]
+  const FIELD_STOPS = [   // diverging: negative (blue) – zero (dark) – positive (orange)
+    [0.00, [205, 240, 255]], [0.18, [40, 130, 255]], [0.35, [20, 60, 160]], [0.50, [11, 15, 28]],
+    [0.65, [170, 50, 20]], [0.82, [255, 140, 30]], [1.00, [255, 240, 170]],
+  ];
+  const INT_STOPS = [     // sequential: dark → purple → orange → pale yellow
+    [0.00, [6, 8, 22]], [0.20, [45, 20, 100]], [0.45, [150, 35, 110]], [0.70, [240, 110, 40]], [1.00, [255, 240, 150]],
+  ];
+  function makeLut(stops) {
+    const lut = new Uint32Array(256);
+    for (let i = 0; i < 256; i++) {
+      const t = i / 255;
+      let k = 0;
+      while (k < stops.length - 2 && t > stops[k + 1][0]) k++;
+      const [t0, c0] = stops[k], [t1, c1] = stops[k + 1];
+      const u = Math.min(1, Math.max(0, (t - t0) / (t1 - t0)));
+      const r = c0[0] + (c1[0] - c0[0]) * u, g = c0[1] + (c1[1] - c0[1]) * u, b = c0[2] + (c1[2] - c0[2]) * u;
+      lut[i] = (255 << 24) | ((b | 0) << 16) | ((g | 0) << 8) | (r | 0);
+    }
+    return lut;
+  }
+  const LUT_FIELD = makeLut(FIELD_STOPS), LUT_INT = makeLut(INT_STOPS);
+
+  /* ------------------------------------------------------------------ *
+   *  Field computation
+   *
+   *  Element e emits  a·cos(ωt − k·r + φ).  Writing the sum as
+   *      E(t) = Re{ e^{iωt} · Z },   Z = Σ a·e^{i(φ − k r)} = X + iY
+   *  gives  E(t) = X·cos(ωt) − Y·sin(ωt)  and  |Z| = time-averaged amplitude.
+   *  So per element we cache a·cos(kr) and a·sin(kr) once (depends only on geometry),
+   *  recombine X, Y when a phase changes, and every animation frame is just two multiplies per pixel.
+   * ------------------------------------------------------------------ */
+  const NPX = W * H;
+  const cC = [], cS = [];
+  for (let e = 0; e < N; e++) { cC.push(new Float32Array(NPX)); cS.push(new Float32Array(NPX)); }
+  const fX = new Float32Array(NPX), fY = new Float32Array(NPX), fMag = new Float32Array(NPX);
+  let ref = 1;
+
+  function rebuildGeometry() {
+    for (let e = 0; e < N; e++) {
+      const ey = elemY(e), C = cC[e], S = cS[e];
+      let n = 0;
+      for (let j = 0; j < H; j++) {
+        const wy = (Y0 - (j + 0.5)) / PPW - ey;
+        const wy2 = wy * wy;
+        for (let i = 0; i < W; i++, n++) {
+          const wx = (i + 0.5 - X0) / PPW;
+          const r = Math.sqrt(wx * wx + wy2);
+          const a = state.decay ? 1 / Math.sqrt(Math.max(r, 0.5)) : 1;
+          const ph = TAU * r;
+          C[n] = a * Math.cos(ph);
+          S[n] = a * Math.sin(ph);
+        }
+      }
+    }
+    ref = N * (state.decay ? 1 / Math.sqrt(R_REF) : 1);
+  }
+
+  function combine() {
+    const c = state.phase.map(p => Math.cos(p * DEG)), s = state.phase.map(p => Math.sin(p * DEG));
+    const [C0, C1, C2, C3] = cC, [S0, S1, S2, S3] = cS;
+    for (let n = 0; n < NPX; n++) {
+      // (a·cos kr − i·a·sin kr)·(cos φ + i·sin φ) summed over the four elements
+      const x = C0[n] * c[0] + S0[n] * s[0] + C1[n] * c[1] + S1[n] * s[1] +
+                C2[n] * c[2] + S2[n] * s[2] + C3[n] * c[3] + S3[n] * s[3];
+      const y = C0[n] * s[0] - S0[n] * c[0] + C1[n] * s[1] - S1[n] * c[1] +
+                C2[n] * s[2] - S2[n] * c[2] + C3[n] * s[3] - S3[n] * c[3];
+      fX[n] = x; fY[n] = y;
+    }
+    if (!state.back) {                       // reflector-backed array: nothing behind the array line
+      for (let j = 0; j < H; j++) {
+        const o = j * W;
+        for (let i = 0; i < X0; i++) { fX[o + i] = 0; fY[o + i] = 0; }
+      }
+    }
+    for (let n = 0; n < NPX; n++) fMag[n] = Math.hypot(fX[n], fY[n]);
+  }
+
+  function renderField() {
+    if (state.view === 'field') {
+      const cw = Math.cos(omegaT), sw = Math.sin(omegaT), k = 127.5 / ref;
+      for (let n = 0; n < NPX; n++) {
+        let v = (fX[n] * cw - fY[n] * sw) * k + 127.5;
+        v = v < 0 ? 0 : v > 255 ? 255 : v;
+        px32[n] = LUT_FIELD[v | 0];
+      }
+    } else {
+      const k = 255 / ref;
+      for (let n = 0; n < NPX; n++) {
+        let v = fMag[n] * k;
+        v = v > 255 ? 255 : v;
+        px32[n] = LUT_INT[v | 0];
+      }
+    }
+    fctx.putImageData(img, 0, 0);
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Far field (array factor) and its analysis
+   * ------------------------------------------------------------------ */
+  function arrayFactor(thetaDeg) {           // |AF| / N, θ measured from broadside, +θ = up
+    const s = Math.sin(thetaDeg * DEG);
+    let re = 0, im = 0;
+    for (let e = 0; e < N; e++) {
+      const ang = TAU * elemY(e) * s + state.phase[e] * DEG;
+      re += Math.cos(ang); im += Math.sin(ang);
+    }
+    return Math.hypot(re, im) / N;
+  }
+
+  // A "lobe" is a contiguous angular range where the pattern stays within 3 dB of the global maximum.
+  // When several lobes are equally strong (grating lobes, alternating phases) the one closest to the
+  // intended direction (steering angle in auto mode, broadside otherwise) is reported as the main beam.
+  let analysis = { peak: 0, bw: 0, truncated: false, lobes: [], main: null };
+  function analyze() {
+    const STEP = 0.1, n = Math.round(180 / STEP) + 1;
+    const amp = new Float64Array(n);
+    let best = 0;
+    for (let k = 0; k < n; k++) { amp[k] = arrayFactor(-90 + k * STEP); if (amp[k] > best) best = amp[k]; }
+    const thr = best / Math.SQRT2;                      // −3 dB in power = 0.707 in amplitude
+    const lobes = [];
+    for (let k = 0; k < n; k++) {
+      if (amp[k] < thr) continue;
+      const lo = k;
+      let top = k;
+      while (k + 1 < n && amp[k + 1] >= thr) { k++; if (amp[k] > amp[top]) top = k; }
+      lobes.push({ ang: -90 + top * STEP, amp: amp[top], width: (k - lo) * STEP, touchesEdge: lo === 0 || k === n - 1 });
+    }
+    const target = state.mode === 'auto' ? state.steer : 0;
+    let main = null;
+    for (const l of lobes) {
+      if (l.amp < best * 0.999) continue;
+      if (!main || Math.abs(l.ang - target) < Math.abs(main.ang - target)) main = l;
+    }
+    analysis = { peak: main.ang, bw: main.width, truncated: main.touchesEdge, lobes, main };
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  UI sync
+   * ------------------------------------------------------------------ */
+  function computePhases() {                 // progressive phase that steers the beam to state.steer
+    const s = Math.sin(state.steer * DEG);
+    for (let i = 0; i < N; i++) state.phase[i] = wrap(-360 * elemY(i) * s);
+  }
+
+  function setSteering(deg) {
+    state.steer = deg;
+    state.mode = 'auto';
+    computePhases();
+    dirty.phase = true;
+    syncUI();
+  }
+
+  function syncUI() {
+    steerEl.value = state.steer;
+    steerOut.textContent = fmtSigned(state.steer, 1) + '°';
+    spacingEl.value = state.d;
+    spacingOut.textContent = state.d.toFixed(2) + ' λ';
+    for (let i = 0; i < N; i++) {
+      const p = state.phase[i], r = phaseRows[i];
+      r.slider.value = Math.round(p);
+      r.out.textContent = fmtSigned(Math.round(p)) + '°';
+      const x = 15 * Math.cos(p * DEG), y = -15 * Math.sin(p * DEG);
+      r.needle.setAttribute('x2', x); r.needle.setAttribute('y2', y);
+      r.tip.setAttribute('cx', x); r.tip.setAttribute('cy', y);
+    }
+    modeStatus.innerHTML = state.sweep ? 'Mode: <b>auto-sweep</b> – phases follow the scanning angle'
+      : state.mode === 'auto' ? 'Mode: <b>progressive phase</b> – phases follow the steering angle'
+      : 'Mode: <b>manual phases</b> – steering slider no longer drives the array';
+    sweepBtn.classList.toggle('on', state.sweep);
+    sweepBtn.setAttribute('aria-pressed', state.sweep);
+  }
+
+  function updateReadouts() {
+    outBeam.textContent = fmtSigned(analysis.peak, 1) + '°';
+    outBW.textContent = (analysis.truncated ? '≥ ' : '') + analysis.bw.toFixed(1) + '°';
+    const diffs = [];
+    for (let i = 0; i < N - 1; i++) diffs.push(wrap(state.phase[i + 1] - state.phase[i]));
+    const regular = diffs.every(d => Math.abs(wrap(d - diffs[0])) < 1);
+    outStep.textContent = regular ? fmtSigned(diffs[0], 0) + '°' : 'irregular';
+
+    const lobes = analysis.lobes.length;
+    if (lobes > 1) {
+      badge.textContent = `${lobes} separate beams of comparable strength` +
+        (state.mode === 'auto' ? ' – grating lobe: the spacing is too large for this steering angle.' : '.');
+      badge.classList.add('show');
+    } else badge.classList.remove('show');
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Overlay (array, guides, labels)
+   * ------------------------------------------------------------------ */
+  const dpr = () => Math.min(window.devicePixelRatio || 1, 3);
+  function fitCanvas(cv) {
+    const w = cv.clientWidth, h = cv.clientHeight, r = dpr();
+    const pw = Math.max(1, Math.round(w * r)), ph = Math.max(1, Math.round(h * r));
+    if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+    const ctx = cv.getContext('2d');
+    ctx.setTransform(r, 0, 0, r, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    return { ctx, w, h };
+  }
+  function haloText(ctx, text, x, y, color = '#e6eaf2') {
+    ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(8,12,22,.9)'; ctx.lineJoin = 'round';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color; ctx.fillText(text, x, y);
+  }
+  function arrow(ctx, x0, y0, ang, len, color, width, head = 10) {
+    const dx = Math.cos(ang), dy = -Math.sin(ang);          // screen direction for an "up-positive" angle
+    const x1 = x0 + dx * len, y1 = y0 + dy * len;
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1 - dx * head * 0.6, y1 - dy * head * 0.6); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x1 - dx * head - dy * head * 0.5, y1 - dy * head + dx * head * 0.5);
+    ctx.lineTo(x1 - dx * head + dy * head * 0.5, y1 - dy * head - dx * head * 0.5);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawOverlay() {
+    const { ctx, w, h } = fitCanvas(overlayCv);
+    const s = w / W, lam = PPW * s;                           // css px per buffer px / per wavelength
+    const ox = X0 * s, oy = Y0 * s;
+    ctx.font = '600 12px system-ui, sans-serif';
+    ctx.textBaseline = 'middle';
+
+    if (!state.back) {                                        // reflector line
+      ctx.strokeStyle = 'rgba(255,255,255,.14)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ox + .5, 0); ctx.lineTo(ox + .5, h); ctx.stroke();
+    }
+
+    if (state.guides) {
+      // broadside reference
+      ctx.setLineDash([5, 5]); ctx.strokeStyle = 'rgba(255,255,255,.28)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(ox, oy); ctx.lineTo(ox + 15 * lam, oy); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // beam arrows (main lobe bright, grating lobes dim)
+      const lobes = analysis.lobes.slice();
+      if (state.back) lobes.push(...analysis.lobes.map(l => ({ ang: 180 - l.ang, back: true })));
+      for (const l of lobes) {
+        const main = l === analysis.main;
+        arrow(ctx, ox, oy, l.ang * DEG, 6.5 * lam, main ? '#38bdf8' : 'rgba(56,189,248,.45)', main ? 3 : 2, main ? 12 : 9);
+      }
+
+      // wavefront-tilt line + angle arc for the main beam
+      const th = analysis.peak * DEG;
+      const cx = ox + Math.cos(th) * 5.6 * lam, cy = oy - Math.sin(th) * 5.6 * lam;
+      const px = Math.sin(th), py = Math.cos(th);
+      ctx.setLineDash([6, 5]); ctx.strokeStyle = 'rgba(255,255,255,.8)'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(cx - px * 2.2 * lam, cy - py * 2.2 * lam); ctx.lineTo(cx + px * 2.2 * lam, cy + py * 2.2 * lam); ctx.stroke();
+      ctx.setLineDash([]);
+      if (Math.abs(analysis.peak) > 0.4) {
+        const ra = 3.3 * lam;
+        ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 1.25;
+        ctx.beginPath(); ctx.arc(ox, oy, ra, 0, -th, th > 0); ctx.stroke();
+        ctx.textAlign = 'left';
+        haloText(ctx, `θ = ${fmtSigned(analysis.peak, 1)}°`, ox + Math.cos(th / 2) * (ra + 14), oy - Math.sin(th / 2) * (ra + 14) + (th > 0 ? -4 : 4));
+      }
+    }
+
+    // array: backbone + elements + labels
+    const y0 = oy - elemY(0) * lam, y1 = oy - elemY(N - 1) * lam;
+    ctx.strokeStyle = 'rgba(251,191,36,.55)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(ox, y0); ctx.lineTo(ox, y1); ctx.stroke();
+    const showPhase = w >= 560;
+    const rad = Math.max(4.5, Math.min(7, w / 110));        // element marker radius
+    ctx.textAlign = 'right';
+    for (let i = 0; i < N; i++) {
+      const ey = oy - elemY(i) * lam;
+      ctx.fillStyle = '#0b0f1c'; ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(ox, ey, rad, 0, TAU); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath(); ctx.arc(ox, ey, rad * 0.35, 0, TAU); ctx.fill();
+      const txt = showPhase ? `${i + 1}  φ${SUB[i]} ${fmtSigned(Math.round(state.phase[i]))}°` : `${i + 1}`;
+      haloText(ctx, txt, ox - rad - 7, ey, '#fde68a');
+    }
+
+    // scale bar (1 λ) and colour bar
+    ctx.textAlign = 'left';
+    const bx = 14, by = h - 16;
+    ctx.strokeStyle = '#e6eaf2'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(bx, by - 4); ctx.lineTo(bx, by + 4); ctx.moveTo(bx, by); ctx.lineTo(bx + lam, by);
+    ctx.moveTo(bx + lam, by - 4); ctx.lineTo(bx + lam, by + 4); ctx.stroke();
+    haloText(ctx, '1 λ', bx + lam + 8, by);
+
+    const cbw = Math.min(130, w * 0.22), cbx = w - cbw - 14, cby = h - 22;
+    const g = ctx.createLinearGradient(cbx, 0, cbx + cbw, 0);
+    for (const [t, c] of (state.view === 'field' ? FIELD_STOPS : INT_STOPS)) g.addColorStop(t, `rgb(${c[0]},${c[1]},${c[2]})`);
+    ctx.fillStyle = g; ctx.fillRect(cbx, cby, cbw, 9);
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1; ctx.strokeRect(cbx + .5, cby + .5, cbw - 1, 8);
+    ctx.font = '11px system-ui, sans-serif';
+    ctx.textAlign = 'left';  haloText(ctx, state.view === 'field' ? '−E' : 'low', cbx, cby - 8, '#c3cce0');
+    ctx.textAlign = 'right'; haloText(ctx, state.view === 'field' ? '+E' : 'high', cbx + cbw, cby - 8, '#c3cce0');
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Polar plot of the array factor
+   * ------------------------------------------------------------------ */
+  function drawPolar() {
+    const { ctx, w, h } = fitCanvas(polarCv);
+    const cx = w / 2, cy = h / 2, R = w / 2 - 28;
+    const FLOOR = 30;                                          // dB range shown
+    ctx.font = '11px system-ui, sans-serif';
+
+    // grid
+    ctx.lineWidth = 1; ctx.strokeStyle = 'rgba(255,255,255,.12)';
+    for (const db of [0, -10, -20, -30]) {
+      ctx.beginPath(); ctx.arc(cx, cy, (db + FLOOR) / FLOOR * R, 0, TAU); ctx.stroke();
+    }
+    for (let a = -150; a <= 180; a += 30) {
+      ctx.beginPath(); ctx.moveTo(cx, cy);
+      ctx.lineTo(cx + Math.cos(a * DEG) * R, cy - Math.sin(a * DEG) * R); ctx.stroke();
+    }
+    ctx.fillStyle = '#93a0b8'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const a of [-90, -60, -30, 0, 30, 60, 90]) {
+      ctx.fillText(`${a}°`, cx + Math.cos(a * DEG) * (R + 15), cy - Math.sin(a * DEG) * (R + 15));
+    }
+    ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+    for (const db of [-10, -20, -30]) ctx.fillText(`${db}`, cx + 3, cy - (db + FLOOR) / FLOOR * R - 2);
+
+    // pattern
+    const pt = a => {
+      const db = 20 * Math.log10(Math.max(arrayFactor(a), 1e-4));
+      const r = Math.min(1, Math.max(0, (db + FLOOR) / FLOOR)) * R;
+      return [cx + Math.cos(a * DEG) * r, cy - Math.sin(a * DEG) * r];
+    };
+    const trace = (a0, a1) => {
+      ctx.beginPath();
+      for (let a = a0; a <= a1; a += 1) { const [x, y] = pt(a); a === a0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
+    };
+    // back half (mirror image of the front)
+    trace(90, 270);
+    ctx.strokeStyle = state.back ? 'rgba(56,189,248,.8)' : 'rgba(56,189,248,.25)';
+    ctx.lineWidth = state.back ? 2 : 1.25; ctx.setLineDash(state.back ? [] : [3, 3]); ctx.stroke(); ctx.setLineDash([]);
+    if (state.back) { ctx.fillStyle = 'rgba(56,189,248,.12)'; ctx.fill(); }
+    // front half
+    trace(-90, 90); ctx.closePath();
+    ctx.fillStyle = 'rgba(56,189,248,.22)'; ctx.fill();
+    ctx.strokeStyle = '#38bdf8'; ctx.lineWidth = 2; ctx.stroke();
+
+    // main-beam marker
+    const [mx, my] = pt(analysis.peak);
+    ctx.strokeStyle = 'rgba(251,191,36,.8)'; ctx.setLineDash([4, 4]); ctx.lineWidth = 1.25;
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(analysis.peak * DEG) * R, cy - Math.sin(analysis.peak * DEG) * R); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#fbbf24'; ctx.beginPath(); ctx.arc(mx, my, 4, 0, TAU); ctx.fill();
+
+    // array symbol at the origin
+    ctx.fillStyle = '#fbbf24'; ctx.fillRect(cx - 1.5, cy - 7, 3, 14);
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Main loop
+   * ------------------------------------------------------------------ */
+  const dirty = { geom: true, phase: true, field: true, overlay: true, polar: true };
+  let last = performance.now();
+
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+
+    if (state.sweep) {
+      sweepT += dt;
+      state.steer = Math.round(SWEEP_AMP * Math.sin(TAU * sweepT / SWEEP_PERIOD) * 2) / 2;
+      state.mode = 'auto';
+      computePhases();
+      dirty.phase = true;
+      syncUI();
+    }
+    if (dirty.geom) { rebuildGeometry(); dirty.geom = false; dirty.phase = true; }
+    if (dirty.phase) {
+      combine(); analyze(); updateReadouts();
+      dirty.phase = false; dirty.field = dirty.overlay = dirty.polar = true;
+    }
+    if (state.playing) {
+      omegaT = (omegaT + dt * state.speed * TAU * FREQ) % (TAU * 1000);
+      if (state.view === 'field') dirty.field = true;
+    }
+    if (dirty.field)   { renderField(); dirty.field = false; }
+    if (dirty.overlay) { drawOverlay(); dirty.overlay = false; }
+    if (dirty.polar)   { drawPolar();   dirty.polar = false; }
+    requestAnimationFrame(frame);
+  }
+
+  /* ------------------------------------------------------------------ *
+   *  Events
+   * ------------------------------------------------------------------ */
+  steerEl.addEventListener('input', () => { state.sweep = false; setSteering(+steerEl.value); });
+
+  spacingEl.addEventListener('input', () => {
+    state.d = +spacingEl.value;
+    if (state.mode === 'auto') computePhases();
+    dirty.geom = true;
+    syncUI();
+  });
+
+  document.querySelectorAll('[data-preset]').forEach(b => b.addEventListener('click', () => {
+    state.sweep = false;
+    if (b.dataset.preset === 'alt') {
+      state.mode = 'manual';
+      state.phase = [0, 180, 0, 180];
+      dirty.phase = true;
+      syncUI();
+    } else setSteering(+b.dataset.preset);
+  }));
+
+  sweepBtn.addEventListener('click', () => {
+    state.sweep = !state.sweep;
+    if (state.sweep) sweepT = Math.asin(Math.max(-1, Math.min(1, state.steer / SWEEP_AMP))) * SWEEP_PERIOD / TAU;
+    syncUI();
+  });
+
+  playBtn.addEventListener('click', () => {
+    state.playing = !state.playing;
+    playBtn.textContent = state.playing ? '❚❚ Pause' : '▶ Play';
+    playBtn.setAttribute('aria-pressed', state.playing);
+  });
+  speedEl.addEventListener('input', () => { state.speed = +speedEl.value; });
+
+  function setView(v) {
+    state.view = v;
+    viewFieldBtn.classList.toggle('on', v === 'field');
+    viewIntBtn.classList.toggle('on', v === 'intensity');
+    dirty.field = dirty.overlay = true;
+  }
+  viewFieldBtn.addEventListener('click', () => setView('field'));
+  viewIntBtn.addEventListener('click', () => setView('intensity'));
+
+  $('#decay').addEventListener('change', e => { state.decay = e.target.checked; dirty.geom = true; });
+  $('#back').addEventListener('change', e => { state.back = e.target.checked; dirty.phase = true; });
+  $('#guides').addEventListener('change', e => { state.guides = e.target.checked; dirty.overlay = true; });
+
+  const ro = new ResizeObserver(() => { dirty.overlay = true; dirty.polar = true; });
+  ro.observe(stage); ro.observe(polarCv);
+
+  /* ------------------------------------------------------------------ *
+   *  Start
+   * ------------------------------------------------------------------ */
+  if (!state.playing) { playBtn.textContent = '▶ Play'; playBtn.setAttribute('aria-pressed', 'false'); }
+  computePhases();
+  syncUI();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
