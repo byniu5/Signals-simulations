@@ -86,16 +86,6 @@
         const hgt = r.kind === 'data' ? SH - 12 : r.kind === 'pilot' ? SH - 8 : 5;
         svg.append(s('rect', { x: kx(r.from), y: SH - 4 - hgt, width: Math.max(0.8, (r.to - r.from + 1) * kw), height: hgt, fill: V.KIND[r.kind].color, opacity: 0.85 }));
       }
-      const hov = s('rect', { y: 0, width: Math.max(3, kw), height: SH, fill: 'none', stroke: '#e6eaf2', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
-      const hovT = s('text', { y: 11, 'text-anchor': 'middle', class: 'mono small', opacity: 0, 'pointer-events': 'none' }, '');
-      svg.append(hov, hovT);
-      svg.addEventListener('mousemove', (ev) => {
-        const r = svg.getBoundingClientRect(), x = ((ev.clientX - r.left) / r.width) * W;
-        const on = x >= X0;
-        hov.setAttribute('opacity', on ? 1 : 0); hovT.setAttribute('opacity', on ? 1 : 0);
-        if (on) { const k = Math.round((x - X0) / kw - fft / 2); hov.setAttribute('x', kx(k) - 1); hovT.setAttribute('x', Math.min(X1 - 20, Math.max(X0 + 20, kx(k)))); hovT.textContent = V.signed(k, 0); }
-      });
-      svg.addEventListener('mouseleave', () => { hov.setAttribute('opacity', 0); hovT.setAttribute('opacity', 0); });
       svg.addEventListener('click', (ev) => {
         const r = svg.getBoundingClientRect(), x = ((ev.clientX - r.left) / r.width) * W;
         ev.stopPropagation();

@@ -195,7 +195,8 @@
         const r = svg.getBoundingClientRect();
         return Math.max(-fft / 2, Math.min(fft / 2 - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px - fft / 2 - 0.5)));
       };
-      const mark = hoverMarker(svg, X, px, 30, BASE + 4);
+      const kinds = new Map(tones.map((t) => [t.k, t.kind]));
+      const mark = hoverMarker(svg, X, px, (k) => kinds.get(k), BASE, { data: H_DATA, pilot: H_PILOT, other: 12 });
       svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); mark.show(k); if (opts.onHoverK) opts.onHoverK(k); });
       svg.addEventListener('mouseleave', () => { mark.show(null); if (opts.onHoverK) opts.onHoverK(null); });
       if (opts.onSubcarrier && !needWindow) {
@@ -240,7 +241,8 @@
       return Math.max(k0, Math.min(k0 + WIN - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px + k0 - 0.5)));
     };
     if (opts.onHoverK || opts.onSubcarrier) {
-      const mark = hoverMarker(svg, X, px, 4, B + 4);
+      const kinds = new Map(tones.map((t) => [t.k, t.kind]));
+      const mark = hoverMarker(svg, X, px, (k) => kinds.get(k), B, { data: 66, pilot: 84, other: 10 });
       svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); mark.show(k); if (opts.onHoverK) opts.onHoverK(k); });
       svg.addEventListener('mouseleave', () => { mark.show(null); if (opts.onHoverK) opts.onHoverK(null); });
     }
@@ -256,20 +258,21 @@
       svg);
   }
 
-  /** Highlight + "k = …" label that follows the mouse, so it is clear which subcarrier a click picks. */
-  function hoverMarker(svg, X, px, y0, y1) {
-    const w = Math.max(5, px);
-    const box = s('rect', { y: y0, width: w, height: y1 - y0, rx: 2, fill: 'rgba(230,234,242,.18)', stroke: '#e6eaf2', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
-    const tag = s('text', { y: y0 - 4 > 10 ? y0 - 4 : y1 + 14, 'text-anchor': 'middle', class: 'mono', 'font-weight': 700, opacity: 0, 'pointer-events': 'none' }, '');
-    svg.append(box, tag);
+  /**
+   * Hover cue: the bar under the mouse lights up within its own outline (nothing else drawn).
+   * kindOf(k) → subcarrier kind; heights: { data, pilot, other } above baseline `base`.
+   */
+  function hoverMarker(svg, X, px, kindOf, base, heights) {
+    const w = Math.max(1.5, px * 0.6);
+    const box = s('rect', { width: w, fill: '#ffffff', opacity: 0, 'pointer-events': 'none' });
+    svg.append(box);
     return {
       show(k) {
-        const on = k !== null && k !== undefined;
-        box.setAttribute('opacity', on ? 1 : 0); tag.setAttribute('opacity', on ? 1 : 0);
-        if (!on) return;
-        box.setAttribute('x', X(k) - w / 2);
-        tag.setAttribute('x', Math.min(W - RIGHT - 24, Math.max(LEFT + 24, X(k))));
-        tag.textContent = `k = ${V.signed(k, 0)}`;
+        const kind = k === null || k === undefined ? null : kindOf(k);
+        if (!kind) { box.setAttribute('opacity', 0); return; }
+        const hgt = heights[kind] || heights.other;
+        box.setAttribute('x', X(k) - w / 2); box.setAttribute('y', base - hgt); box.setAttribute('height', hgt);
+        box.setAttribute('opacity', 0.55);
       },
     };
   }
