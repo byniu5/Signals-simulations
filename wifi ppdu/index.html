@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PPDU explorer</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect x='2' y='10' width='6' height='12' fill='%2334d399'/%3E%3Crect x='9' y='10' width='4' height='12' fill='%23a78bfa'/%3E%3Crect x='14' y='10' width='16' height='12' fill='%2338bdf8'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="title-block">
+    <a class="back" href="../index.html">← All simulations</a>
+    <h1 id="appTitle">PPDU explorer</h1>
+    <p id="appSubtitle" class="muted"></p>
+  </div>
+  <div class="top-actions">
+    <div id="systemPicker"></div>
+    <nav id="modeTabs" role="tablist" aria-label="Mode"></nav>
+    <button id="glossaryBtn" type="button" class="ghost">Glossary</button>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<aside id="glossary" class="drawer" hidden aria-label="Glossary"></aside>
+<div id="tooltip" role="tooltip" hidden></div>
+
+<!-- core: system-agnostic -->
+<script src="core/registry.js"></script>
+<script src="core/dom.js"></script>
+<script src="core/dsp.js"></script>
+<script src="core/tooltip.js"></script>
+<script src="core/zoom.js"></script>
+<!-- systems: each registers itself -->
+<script src="systems/wifi/standards-data.js"></script>
+<script src="systems/wifi/calc.js"></script>
+<script src="systems/wifi/view-common.js"></script>
+<script src="systems/wifi/view-frequency.js"></script>
+<script src="systems/wifi/view-symbol.js"></script>
+<script src="systems/wifi/view-ppdu.js"></script>
+<script src="systems/wifi/view-panels.js"></script>
+<script src="systems/wifi/module.js"></script>
+<!-- boot -->
+<script src="core/app.js"></script>
+</body>
+</html>

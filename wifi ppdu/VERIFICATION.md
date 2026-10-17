@@ -7,26 +7,25 @@ No clause number was read in the IEEE document. Top-level clauses are those give
 **Status rule:** *verified* = the exact value is stated by at least one public secondary source and matches an
 independent check (a second source, arithmetic, or the pre-research plan). Everything else is *unverified*.
 
-- Value entries: **115** — verified **93**, unverified **22**
+- Value entries: **119** — verified **98**, unverified **21**
 
 ## Unverified — please check against the standard
 
 | Entry | Value | Evidence | Note |
 |---|---|---|---|
 | `legacy.phaseRotationDeg` | {"20":[0],"40":[0,90],"80":[0,180,180,180],"160":[0,180,180,180,0,180,180,180]} | pat-phase-rot, keysight-nonht-dup | 40 MHz {1, j} and 80 MHz {1,-1,-1,-1} are stated by a patent (verified level); the 160 MHz pattern (two 80 MHz patterns) was not found in a source, so the entry as a whole stays unverified. |
-| `generations.nonHT.fields[L-STF].duration` | 8 µs | ns3-ofdm, plan | ns-3 confirms L-STF + L-LTF = 16 µs; the 8 + 8 split (10 x 0.8 µs short symbols) is not yet confirmed. |
-| `generations.nonHT.fields[L-LTF].duration` | 8 µs | ns3-ofdm, plan | Expected 1.6 µs GI2 + 2 x 3.2 µs; only the 16 µs total is confirmed (ns-3). |
+| `generations.nonHT.lsigBits` | [{"name":"RATE","bits":4},{"name":"Reserved","bits":1},{"name":"LENGTH","bits":12},{"na… | plan | 24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers). |
+| `generations.nonHT.maxPsduOctets` | 4095 octet | plan | largest value of the 12-bit LENGTH field |
 | `generations.HT.toneplan.20.pilots` | [-21,-7,7,21] | plan | same positions as Non-HT; no source found for HT 20 MHz specifically |
 | `generations.HT.encoders` | {"maxMbpsPerEncoder":{"0.8":320,"0.4":350}} | ns3-ht | N_ES = ceil(rate / threshold). ns-3 derived these thresholds by observing where N_ES increments in Tables 19-27..19-41 (802.11-2016); they are not stated as a rule in the standard. |
 | `generations.VHT.toneplan.160.occupied` | [[-250,-130],[-126,-6],[6,126],[130,250]] | plan | Two 80 MHz plans at ±128 (4 x 121 = 484 = 468 + 16): consistent arithmetic, but index ranges not found in a source. |
 | `generations.VHT.encoders` | {"maxMbpsPerEncoder":{"0.8":540,"0.4":600},"exceptions":[{"bw":80,"nss":7,"mcs":2,"N_ES… | ns3-vht | ns-3 rule derived from Tables 21-30..21-61 (802.11-2016): N_ES = ceil(rate / threshold) plus exceptions. |
 | `generations.VHT.txtime.shortGiRounding` | true | mw-duration, plan | Same 4 µs alignment as HT-mixed expected for VHT (TXTIME eq. in 21.4.3 of 802.11-2016 per MathWorks); not confirmed. |
-| `generations.HE.toneplan.40.pilots` | [-238,-212,-170,-144,-104,-78,-36,-10,10,36,78,104,144,170,212,238] | plan, pat-he-pilots-80 | Equals the 80 MHz lower 484-tone RU pilot set from pat-he-pilots-80 shifted by +256 — a derivation, not a direct source. |
-| `generations.HE.toneplan.160.pilots` | [-980,-912,-846,-778,-732,-664,-598,-530,-494,-426,-360,-292,-246,-178,-112,-44,44,112,… | pat-he-pilots-80 | Derived: the 80 MHz 996-tone pilot set shifted by ±512. |
+| `generations.HE.toneplan.20.pilots` | [-116,-90,-48,-22,22,48,90,116] | pat-he-pilots-242, plan | Stated by one patent; marked unverified in review (not to be derived from the 80 MHz set). |
+| `generations.HE.toneplan.40.pilots` | [-238,-212,-170,-144,-104,-78,-36,-10,10,36,78,104,144,170,212,238] | plan | Value from the pre-research plan only; no source found. |
 | `generations.HE.N_LTF` | {"1":1,"2":2,"3":4,"4":4} | plan | Assumed equal to the VHT mapping; ns-3 caps HE-LTFs at 8 but does not show the mapping. |
-| `generations.HE.dataField.N_DBPS_rounding` | floor | tgbe-ndbps | N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector; consistent with published 600.4 Mbps (8166 / 13.6 µs) for 80 MHz MCS 11 — but R&S publishes 600.5. Check against the HE MCS tables. |
+| `generations.HE.dataField.N_DBPS_rounding` | floor | tgbe-ndbps | N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector only. None of the 72 ns-3 HE TXTIME vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool. |
 | `generations.HE.dataField.N_SD_short` | {"242":60,"484":120,"996":240,"1992":492} | pat-nsd-short, plan | Not found directly. Consistent with the multi-RU patent (484+242 -> 180, 996+484 -> 360) and with N_DBPS,short being an integer for every MCS. 1992 = 2 x 996-tone RU (160 MHz). |
-| `generations.HE.packetExtension.T_PE` | {"0":[0,0,0,0],"8":[0,0,4,8],"16":[4,8,12,16]} µs | pat-pe, plan | The 16 µs row (4/8/12/16) matches the patents (nominal 16 µs, 4 µs decrement). The 0 and 8 µs rows were not found in a source. |
 | `ldpc.codewordTable` | [{"maxAvbits":648,"N_CW":1,"L_long":1296,"L_short":648,"threshold":912},{"maxAvbits":12… | plan | Row i applies when N_avbits <= maxAvbits. L_long is used if N_avbits >= N_pld + threshold·(1 − R). Last row: N_CW = ceil(N_pld / (1944·R)). Codeword lengths 648/1296/1944 confirmed by patents; thresholds not found. |
 | `ldpc.extraSymbolCondition` | {"puncturedFraction":0.1,"shorteningFactor":1.2} | pat-ldpc-extra, plan | Extra symbol (HT) / LDPC extra symbol segment (HE) if N_punc > 0.1·N_CW·L_LDPC·(1 − R) AND N_shrt < 1.2·N_punc·R/(1 − R). The patent uses this form for a longer-codeword variant. |
 | `interframe.bands.6.SIFS` | 16 µs | plan | assumed same as 5 GHz |
@@ -52,21 +51,25 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `legacy.occupied` | [[-26,-1],[1,26]] | pat-legacy-sig, keysight-ofdm, plan |  |
 | `legacy.pilots` | [-21,-7,7,21] | pat-legacy-sig, keysight-ofdm, plan |  |
 | `legacy.subchannelOffsets` | {"20":[0],"40":[-32,32],"80":[-96,-32,32,96],"160":[-224,-160,-96,-32,32,96,160,224]} | arith, keysight-nonht-dup | 20 MHz subchannel = 64 subcarriers of 312.5 kHz; centres at odd multiples of 32. |
-| `generations.nonHT.numerology.subcarrierSpacingKHz` | 312.5 kHz | keysight-ofdm, arith, plan |  |
-| `generations.nonHT.numerology.T_DFT` | 3.2 µs | ns3-ofdm, arith, plan | 1 / 312.5 kHz; ns-3: symbol 4 µs = 3.2 + 0.8 |
-| `generations.nonHT.numerology.guardIntervals` | [0.8] µs | ns3-ofdm, keysight-ofdm, plan |  |
-| `generations.nonHT.numerology.fftSize` | {"20":64} | keysight-ofdm, plan |  |
+| `generations.nonHT.ofdm.subcarrierSpacingKHz` | 312.5 kHz | keysight-ofdm, arith, plan |  |
+| `generations.nonHT.ofdm.T_DFT` | 3.2 µs | ns3-ofdm, arith, plan | 1 / 312.5 kHz; ns-3: symbol 4 µs = 3.2 + 0.8 |
+| `generations.nonHT.ofdm.guardIntervals` | [0.8] µs | ns3-ofdm, keysight-ofdm, plan |  |
+| `generations.nonHT.ofdm.fftSize` | {"20":64} | keysight-ofdm, plan |  |
 | `generations.nonHT.toneplan.20.occupied` | [[-26,-1],[1,26]] | pat-legacy-sig, keysight-ofdm, plan |  |
 | `generations.nonHT.toneplan.20.pilots` | [-21,-7,7,21] | pat-legacy-sig, keysight-ofdm, plan |  |
 | `generations.nonHT.toneplan.20.N_SD` | 48 | ns3-ofdm, keysight-ofdm, plan |  |
 | `generations.nonHT.rates` | [{"rateMbps":6,"mod":"BPSK","R":"1/2"},{"rateMbps":9,"mod":"BPSK","R":"3/4"},{"rateMbps… | ns3-ofdm, plan |  |
 | `generations.nonHT.dataField.N_service` | 16 bit | ns3-ofdm, plan | SERVICE field |
 | `generations.nonHT.dataField.N_tail` | 6 bit | ns3-ofdm, plan | BCC tail per encoder |
+| `generations.nonHT.fields[L-STF].duration` | 8 µs | pat-preamble-11a, ns3-ofdm, plan |  |
+| `generations.nonHT.fields[L-STF].structure` | {"shortTrainingSymbols":10,"each":0.8} µs | pat-preamble-11a, plan |  |
+| `generations.nonHT.fields[L-LTF].duration` | 8 µs | pat-preamble-11a, ns3-ofdm, plan |  |
+| `generations.nonHT.fields[L-LTF].structure` | {"gi2":1.6,"longTrainingSymbols":2,"each":3.2} µs | pat-preamble-11a, plan |  |
 | `generations.nonHT.fields[L-SIG].duration` | 4 µs | ns3-ofdm, keysight-ofdm, plan | one OFDM symbol, BPSK rate 1/2 |
-| `generations.HT.numerology.subcarrierSpacingKHz` | 312.5 kHz | arith, plan | 40 MHz / 128 = 20 MHz / 64 |
-| `generations.HT.numerology.T_DFT` | 3.2 µs | ns3-ht, plan | ns-3: symbol = 3200 ns + GI |
-| `generations.HT.numerology.guardIntervals` | [0.8,0.4] µs | ns3-ht, plan | 0.4 µs = short GI |
-| `generations.HT.numerology.fftSize` | {"20":64,"40":128} | arith, plan |  |
+| `generations.HT.ofdm.subcarrierSpacingKHz` | 312.5 kHz | arith, plan | 40 MHz / 128 = 20 MHz / 64 |
+| `generations.HT.ofdm.T_DFT` | 3.2 µs | ns3-ht, plan | ns-3: symbol = 3200 ns + GI |
+| `generations.HT.ofdm.guardIntervals` | [0.8,0.4] µs | ns3-ht, plan | 0.4 µs = short GI |
+| `generations.HT.ofdm.fftSize` | {"20":64,"40":128} | arith, plan |  |
 | `generations.HT.toneplan.20.occupied` | [[-28,-1],[1,28]] | arith, plan | 52 data + 4 pilots = 56 = ±1..±28 with one DC null |
 | `generations.HT.toneplan.20.N_SD` | 52 | ns3-ht, plan |  |
 | `generations.HT.toneplan.40.occupied` | [[-58,-2],[2,58]] | arith, plan | 108 + 6 = 114 = ±2..±58 with 3 DC nulls |
@@ -80,10 +83,10 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.HT.fields[HT-SIG].duration` | 8 µs | ns3-ht, plan | HT-SIG1 + HT-SIG2 |
 | `generations.HT.fields[HT-STF].duration` | 4 µs | ns3-ht, plan |  |
 | `generations.HT.fields[HT-LTF].durationEach` | 4 µs | ns3-ht, plan |  |
-| `generations.VHT.numerology.subcarrierSpacingKHz` | 312.5 kHz | arith, plan |  |
-| `generations.VHT.numerology.T_DFT` | 3.2 µs | ns3-ht, plan |  |
-| `generations.VHT.numerology.guardIntervals` | [0.8,0.4] µs | ns3-ht, plan |  |
-| `generations.VHT.numerology.fftSize` | {"20":64,"40":128,"80":256,"160":512} | arith, plan |  |
+| `generations.VHT.ofdm.subcarrierSpacingKHz` | 312.5 kHz | arith, plan |  |
+| `generations.VHT.ofdm.T_DFT` | 3.2 µs | ns3-ht, plan |  |
+| `generations.VHT.ofdm.guardIntervals` | [0.8,0.4] µs | ns3-ht, plan |  |
+| `generations.VHT.ofdm.fftSize` | {"20":64,"40":128,"80":256,"160":512} | arith, plan |  |
 | `generations.VHT.toneplan.80.occupied` | [[-122,-2],[2,122]] | arith, plan | 234 + 8 = 242 = ±2..±122 with 3 DC nulls |
 | `generations.VHT.toneplan.80.pilots` | [-103,-75,-39,-11,11,39,75,103] | pat-ht-vht-pilots, plan |  |
 | `generations.VHT.toneplan.80.N_SD` | 234 | ns3-vht, plan |  |
@@ -97,19 +100,19 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.VHT.fields[VHT-STF].duration` | 4 µs | ns3-vht, plan |  |
 | `generations.VHT.fields[VHT-LTF].durationEach` | 4 µs | ns3-vht, plan |  |
 | `generations.VHT.fields[VHT-SIG-B].duration` | 4 µs | mw-vht-ppdu, ns3-vht, plan | Present in VHT SU PPDUs too (MathWorks: 17-bit VHT-SIG-B Length at 20 MHz SU). ns-3 models it for MU only. |
-| `generations.HE.numerology.subcarrierSpacingKHz` | 78.125 kHz | ns3-he, arith, plan | 1 / 12.8 µs = 20 MHz / 256 |
-| `generations.HE.numerology.T_DFT` | 12.8 µs | ns3-he, plan | ns-3: symbol = 12800 ns + GI |
-| `generations.HE.numerology.guardIntervals` | [0.8,1.6,3.2] µs | ieee-16-1341, plan |  |
-| `generations.HE.numerology.fftSize` | {"20":256,"40":512,"80":1024,"160":2048} | arith, plan |  |
+| `generations.HE.ofdm.subcarrierSpacingKHz` | 78.125 kHz | ns3-he, arith, plan | 1 / 12.8 µs = 20 MHz / 256 |
+| `generations.HE.ofdm.T_DFT` | 12.8 µs | ns3-he, plan | ns-3: symbol = 12800 ns + GI |
+| `generations.HE.ofdm.guardIntervals` | [0.8,1.6,3.2] µs | ieee-16-1341, plan |  |
+| `generations.HE.ofdm.fftSize` | {"20":256,"40":512,"80":1024,"160":2048} | arith, plan |  |
 | `generations.HE.toneplan.20.occupied` | [[-122,-2],[2,122]] | ns3-heru, plan |  — clause as cited: Table 27-7 (802.11ax-2021, per ns-3) |
-| `generations.HE.toneplan.20.pilots` | [-116,-90,-48,-22,22,48,90,116] | pat-he-pilots-242, plan |  |
 | `generations.HE.toneplan.20.N_SD` | 234 | ns3-he, cts-ru, plan |  |
 | `generations.HE.toneplan.40.occupied` | [[-244,-3],[3,244]] | ns3-heru, plan |  — clause as cited: Table 27-8 (802.11ax-2021, per ns-3) |
 | `generations.HE.toneplan.40.N_SD` | 468 | ns3-he, cts-ru, plan |  |
 | `generations.HE.toneplan.80.occupied` | [[-500,-3],[3,500]] | ns3-heru, plan |  — clause as cited: Table 27-9 (802.11ax-2021, per ns-3) |
-| `generations.HE.toneplan.80.pilots` | [-468,-400,-334,-266,-220,-152,-86,-18,18,86,152,220,266,334,400,468] | pat-he-pilots-80 | Two patents agree. The pre-research plan had ±24, ±92, ±158, ±226 for the inner pilots, which was wrong; the patents' values are used. Patents also discuss 802.11be — please check against 802.11ax. |
+| `generations.HE.toneplan.80.pilots` | [-468,-400,-334,-266,-226,-158,-92,-24,24,92,158,226,266,334,400,468] | ieee-16-0623, plan | Corrected in review. The ±18-based set found in patents is the 802.11be design. — clause as cited: Table 26-32 of TGax draft (per IEEE 11-16/0623r0, reviewer-cited) |
 | `generations.HE.toneplan.80.N_SD` | 980 | ns3-he, cts-ru, plan |  |
 | `generations.HE.toneplan.160.occupied` | [[-1012,-515],[-509,-12],[12,509],[515,1012]] | ns3-heru, plan |  |
+| `generations.HE.toneplan.160.pilots` | [-980,-912,-846,-778,-738,-670,-604,-536,-488,-420,-354,-286,-246,-178,-112,-44,44,112,… | ieee-16-0623 | The 80 MHz set shifted by −512 and +512 (rule supplied in review). |
 | `generations.HE.toneplan.160.N_SD` | 1960 | ns3-he, plan |  |
 | `generations.HE.resourceUnits.tones` | {"26":{"data":24,"pilot":2},"52":{"data":48,"pilot":4},"106":{"data":102,"pilot":4},"24… | ns3-he, cts-ru, plan | ns-3 gives the data counts; pilot counts = RU size - data (and CTS 160 for 242/484/996). |
 | `generations.HE.resourceUnits.countPerBandwidth` | {"20":{"26":9,"52":4,"106":2,"242":1},"40":{"26":18,"52":8,"106":4,"242":2,"484":1},"80… | ns3-heru, plan |  |
@@ -121,6 +124,7 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.HE.padding.equations` | ["N_Excess = mod(8·APEP_LENGTH + N_tail + N_service, N_DBPS)","N_SYM,init = ceil((8·APE… | pat-padding, plan | Secondary: patents quoting draft text (m_STBC = 1 here). |
 | `generations.HE.padding.aRange` | [1,2,3,4] | pat-pe, plan | a = pre-FEC padding factor |
 | `generations.HE.packetExtension.nominalPacketPadding` | [0,8,16] µs | pat-pe, plan |  |
+| `generations.HE.packetExtension.T_PE` | {"0":[0,0,0,0],"8":[0,0,4,8],"16":[4,8,12,16]} µs | mw-hesuconfig, pat-pe, plan | Index = a − 1. Values confirmed in review from MathWorks wlanHESUConfig; the 16 µs row also matches the patents. |
 | `generations.HE.txtime.formula` | TXTIME = 20 µs + T_HE-PREAMBLE + N_SYM·T_SYM + T_PE + SignalExtension; T_HE-PREAMBLE = … | pat-he-txtime, ieee-16-1411, plan |  |
 | `generations.HE.fields[RL-SIG].duration` | 4 µs | ns3-he, plan | repeated L-SIG (ns-3: L-SIG + RL-SIG = 8 µs) |
 | `generations.HE.fields[HE-SIG-A].duration` | 8 µs | ns3-he, plan | HE SU; 16 µs in an HE ER SU PPDU |
@@ -148,7 +152,10 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 - **pat-legacy-sig** — [US patent 10342042 (describes 802.11a SIG tone plan: -26..26, pilots ±7, ±21)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10342042)
 - **pat-ht-vht-pilots** — [US patent 10447448 family (HT 40 MHz and VHT 80/160 MHz pilot indices)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10447448)
 - **pat-he-pilots-242** — [USPTO patent full text returned by web search for the 242-tone RU pilot indices (exact patent number not recorded)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12294541)
-- **pat-he-pilots-80** — [US patents 12167410 and 12587328 (80 MHz 996-tone and 484-tone RU pilot indices; texts also cover 802.11be)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410)
+- **pat-he-pilots-80** — [US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410)
+- **ieee-16-0623** — [IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.](https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx)
+- **mw-hesuconfig** — [MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.](https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html)
+- **pat-preamble-11a** — [US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972)
 - **pat-phase-rot** — [US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172)
 - **keysight-nonht-dup** — [Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)](https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm)
 - **pat-padding** — [US 2022/0053371 A1 (Newracom) and US 12096275 — reproduce the 802.11ax pre-FEC padding equations](https://patents.google.com/patent/US20220053371A1/en)
@@ -166,7 +173,7 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 - **mw-duration** — [MathWorks WLAN Toolbox: Packet Size and Duration Dependencies (TXTIME in 19.4.3 / 21.4.3 of 802.11-2016)](https://www.mathworks.com/help/wlan/gs/packet-size-and-duration-dependencies.html)
 - **rs-rates** — [Rohde & Schwarz: Wi-Fi data rates (HT/VHT/HE MCS rate tables)](https://rs-nc.rohde-schwarz.com/en/products/wireless-lan/wi-fi-data-rates)
 - **cts-ru** — [CTS 160: 802.11ax OFDMA Resource Units (data/pilot split per RU)](https://www.cleartosend.net/802-11ax-ofdma-resource-units/)
-- **wiki-difs** — [Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x slot time, per-PHY table)](https://en.wikipedia.org/wiki/DCF_Interframe_Space)
+- **wiki-difs** — [Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x aSlotTime, per-PHY table)](https://en.wikipedia.org/wiki/DCF_Interframe_Space)
 - **wiki-sifs** — [Wikipedia: Short Interframe Space (10 us at 2.4 GHz, 16 us at 5 GHz)](https://en.wikipedia.org/wiki/Short_Interframe_Space)
 - **arxiv-ldpc** — [arXiv 2003.11234, Joint shortening and puncturing for structured LDPC codes (802.11n N_shrt, N_punc)](https://arxiv.org/pdf/2003.11234)
 - **pat-ldpc-extra** — [US patent 12212413 (LDPC extra-symbol condition with 0.1 and 1.2 factors, longer-codeword variant)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12212413)

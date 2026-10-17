@@ -113,7 +113,7 @@ test('HE: fractional N_DBPS is rounded down (rule from the data file), never ass
 test('Non-HT, HT and VHT N_DBPS are integers for every allowed combination', () => {
   for (const gen of ['nonHT', 'HT', 'VHT']) {
     const g = D.generations[gen];
-    for (const bw of g.bandwidths) for (const gi of C.val(g.numerology.guardIntervals))
+    for (const bw of g.bandwidths) for (const gi of C.val(g.ofdm.guardIntervals))
       for (const nss of g.spatialStreams) for (const m of C.options({ gen }).mcs) {
         const { cfg } = C.normalize({ gen, band: Object.keys(g.bands)[0], bw, gi, nss, mod: m.mod, R: m.R });
         if (C.exclusion(cfg)) continue;
@@ -146,63 +146,141 @@ test('VHT exclusions coincide with BCC encoder-parser integrality (cross-check o
 });
 
 /* ------------------------------------------------------------------------- *
- *  Time domain: TXTIME against ns-3 test vectors (tx-duration-test.cc)
+ *  Time domain: TXTIME against the ns-3 vectors (tests/vectors/ns3-txtime.js)
  *
- *  ns-3 differs from the standard in two documented ways, corrected here:
- *   (1) HT-mixed / VHT short GI: the standard rounds the data duration up to a
- *       4 µs boundary (IEEE 802.11-07/2077); ns-3 does not.
- *   (2) VHT SU PPDUs carry a 4 µs VHT-SIG-B field (MathWorks VHT PPDU structure);
- *       ns-3 only includes it for MU PPDUs.
+ *  The vectors are verbatim. Where ns-3 departs from the standard, a named
+ *  exception (with sources) from the vectors file is applied here.
  * ------------------------------------------------------------------------- */
+const NS3 = require(path.join(__dirname, 'vectors/ns3-txtime.js'));
 const roundUp4 = (x) => Math.ceil(x / 4 - 1e-9) * 4;
+const applies = (ex, gen, gi) => ex.appliesTo.gen.includes(gen) && (!ex.appliesTo.gi || ex.appliesTo.gi.includes(gi));
 
-test('802.11a 54 Mb/s TXTIME (ns-3 vectors)', () => {
-  for (const [L, t] of [[1536, 248], [76, 32], [14, 24]])
-    assert.equal(TXTIME({ gen: 'nonHT', band: '5', mod: '64-QAM', R: '3/4', payload: L }), t, L + ' B');
-});
+function ns3Config(gen, [m, bw, gi], payload, extra) {
+  const cfg = { gen, band: NS3.band, bw, gi, nss: 1, payload };
+  if (gen === 'nonHT') Object.assign(cfg, D.generations.nonHT.rates.value.find((r) => r.rateMbps === m));
+  else cfg.mcs = m;
+  return Object.assign(cfg, extra);
+}
 
-test('HT-mixed TXTIME (ns-3 vectors; short GI rounded to 4 µs)', () => {
-  const pre = 36; // L-STF + L-LTF + L-SIG + HT-SIG + HT-STF + 1 HT-LTF
-  const vectors = [ // [mcs, bw, gi, [1536 B, 76 B, 14 B] in µs as listed by ns-3]
-    [7, 20, 0.8, [228, 48, 40]],
-    [0, 20, 0.4, [1742.4, 126, 57.6]],
-    [6, 20, 0.4, [226.8, 46.8, 39.6]],
-    [7, 40, 0.8, [128, 44, 40]],
-    [7, 40, 0.4, [118.8, 43.2, 39.6]],
-  ];
-  for (const [mcs, bw, gi, times] of vectors) {
-    [1536, 76, 14].forEach((L, i) => {
-      const expected = gi < 0.8 ? pre + roundUp4(times[i] - pre) : times[i];
-      assert.equal(TXTIME({ gen: 'HT', band: '5', bw, gi, nss: 1, mcs, payload: L }), expected, `MCS ${mcs} ${bw} MHz GI ${gi} ${L} B`);
-      assert.equal(TXTIME({ gen: 'HT', band: '2.4', bw, gi, nss: 1, mcs, payload: L }), expected + 6, '2.4 GHz adds 6 µs signal extension');
-    });
+/** ns-3 vector -> what the standard calculator must give, plus the exception ids applied. */
+function standardExpectation(gen, vec, payload, raw) {
+  const a = C.analyze(ns3Config(gen, vec, payload));
+  const items = a.timeline.items;
+  const dataStart = us(items.find((i) => i.kind === 'data').start_ns);
+  const sigB = items.find((i) => i.name === 'VHT-SIG-B');
+  let pre = dataStart - (sigB ? us(sigB.dur_ns) : 0); // preamble as ns-3 models it
+  let data = raw - pre;
+  const applied = [];
+  for (const [id, ex] of Object.entries(NS3.exceptions)) {
+    if (!applies(ex, gen, vec[2])) continue;
+    applied.push(id);
+    if (id === 'ns3-vht-sigb-su-omitted') pre += us(sigB.dur_ns);
+    else if (id === 'ns3-no-short-gi-rounding') data = roundUp4(data);
+    else throw new Error('exception without an implementation: ' + id);
   }
-});
+  return { expected: pre + data, applied, analysis: a };
+}
 
-test('VHT SU TXTIME (ns-3 vectors + VHT-SIG-B; short GI rounded to 4 µs)', () => {
-  const preNs3 = 36;
-  const vectors = [
-    [8, 20, 0.8, [196, 48, 40]], [8, 20, 0.4, [180, 46.8, 39.6]],
-    [9, 40, 0.8, [108, 40, 40]], [9, 40, 0.4, [100.8, 39.6, 39.6]],
-    [0, 80, 0.8, [460, 60, 44]], [0, 80, 0.4, [417.6, 57.6, 43.2]],
-    [9, 80, 0.8, [68, 40, 40]], [9, 80, 0.4, [64.8, 39.6, 39.6]],
-    [8, 160, 0.8, [56, 40, 40]], [8, 160, 0.4, [54, 39.6, 39.6]],
-  ];
-  for (const [mcs, bw, gi, times] of vectors) {
-    [1536, 76, 14].forEach((L, i) => {
-      const data = times[i] - preNs3;
-      const expected = preNs3 + 4 /* VHT-SIG-B */ + (gi < 0.8 ? roundUp4(data) : data);
-      assert.equal(TXTIME({ gen: 'VHT', bw, gi, nss: 1, mcs, payload: L }), expected, `MCS ${mcs} ${bw} MHz GI ${gi} ${L} B`);
-    });
+/** ns-3's simplified HE model (exception 'ns3-he-simplified-model'), with a selectable N_DBPS convention. */
+function ns3HeModel(vec, payload, rounding) {
+  const [mcs, bw, gi] = vec;
+  // ns-3 preamble: legacy fields + RL-SIG + HE-SIG-A + HE-STF + one fixed 8 µs HE-LTF (= 2x LTF with 1.6 µs GI)
+  const pre = us(C.analyze({ gen: 'HE', bw, gi: 1.6, ltf: '2x', nss: 1, mcs, payload }).timeline.items
+    .find((i) => i.kind === 'data').start_ns);
+  const p = C.symbolParams(C.normalize({ gen: 'HE', bw, gi, nss: 1, mcs, ndbpsRounding: rounding }).cfg);
+  const N_SYM = Math.ceil((16 + 8 * payload + 6) / p.N_DBPS);
+  return pre + N_SYM * us(p.T_SYM_ns);
+}
+
+for (const gen of ['nonHT', 'HT', 'VHT']) {
+  test(`${gen} TXTIME reproduces every ns-3 vector (after named exceptions)`, (t) => {
+    const used = new Set();
+    for (const vec of NS3.vectors[gen]) for (const [L, raw] of Object.entries(vec[3])) {
+      const { expected, applied, analysis } = standardExpectation(gen, vec, Number(L), raw);
+      applied.forEach((id) => used.add(id));
+      const got = us(analysis.timeline.txtime_ns);
+      assert.ok(Math.abs(got - expected) < 1e-9, `${gen} ${JSON.stringify(vec.slice(0, 3))} ${L} B: ${got} vs ${expected} (ns-3 ${raw}, ${applied.join(', ') || 'no exception'})`);
+    }
+    t.diagnostic(`exceptions applied: ${[...used].join(', ') || 'none'}`);
+  });
+}
+
+test('HE ns-3 vectors reproduce with the ns-3 model; exact vs floor N_DBPS is not distinguished by any vector', (t) => {
+  let total = 0, distinguishing = 0;
+  for (const vec of NS3.vectors.HE) for (const [L, raw] of Object.entries(vec[3])) {
+    total++;
+    const exact = ns3HeModel(vec, Number(L), 'exact');
+    const floor = ns3HeModel(vec, Number(L), 'floor');
+    assert.ok(Math.abs(exact - raw) < 1e-9 || Math.abs(floor - raw) < 1e-9, `HE ${vec.slice(0, 3)} ${L} B: ns-3 ${raw}, model ${exact} / ${floor}`);
+    if (Math.abs(exact - floor) > 1e-9) distinguishing++;
   }
+  // Integer N_DBPS for every Non-HT/HT/VHT vector, so they cannot distinguish either.
+  t.diagnostic(`HE vectors: ${total}; vectors whose TXTIME differs between exact and floor N_DBPS: ${distinguishing}`);
+  assert.equal(distinguishing, 0, 'a vector now distinguishes the conventions — update N_DBPS_rounding status');
+  assert.equal(D.generations.HE.dataField.N_DBPS_rounding.status, 'unverified');
 });
 
-test('HE SU preamble matches ns-3 (which models a fixed 8 µs HE-LTF = 2x LTF + 1.6 µs GI)', () => {
+test('HE LDPC: smallest APEP_LENGTH at which exact and floor N_DBPS give different TXTIME (to check in another tool)', (t) => {
+  const found = [];
+  for (const [bw, mcs, nss] of [[80, 9, 1], [80, 11, 1], [160, 9, 1], [160, 11, 1]]) {
+    for (let L = 1; L <= 20000; L++) {
+      const base = { gen: 'HE', bw, gi: 0.8, ltf: '2x', nss, mcs, payload: L, nominalPadding: 16 };
+      const e = C.analyze(Object.assign({ ndbpsRounding: 'exact' }, base)).timeline.txtime_ns;
+      const f = C.analyze(Object.assign({ ndbpsRounding: 'floor' }, base)).timeline.txtime_ns;
+      if (e !== f) { found.push({ bw, mcs, L, exact_us: us(e), floor_us: us(f) }); break; }
+    }
+  }
+  for (const x of found) t.diagnostic(`HE ${x.bw} MHz MCS ${x.mcs} 1SS GI 0.8: APEP_LENGTH ${x.L} -> exact ${x.exact_us} µs, floor ${x.floor_us} µs`);
+  assert.ok(found.length > 0);
+});
+
+test('HE SU preamble field order and durations (ns-3 model: 2x HE-LTF + 1.6 µs GI = 8 µs)', () => {
   const a = C.analyze({ gen: 'HE', bw: 20, gi: 1.6, ltf: '2x', nss: 1, mcs: 0, payload: 14 });
   const data = a.timeline.items.find((i) => i.kind === 'data');
   assert.equal(us(data.start_ns), 44); // 16 + L-SIG 4 + RL-SIG 4 + HE-SIG-A 8 + HE-STF 4 + HE-LTF 8
   assert.deepEqual(a.timeline.items.slice(0, 7).map((i) => i.name),
     ['L-STF', 'L-LTF', 'L-SIG', 'RL-SIG', 'HE-SIG-A', 'HE-STF', 'HE-LTF']);
+});
+
+test('every ns-3 exception names known sources', () => {
+  for (const ex of Object.values(NS3.exceptions)) for (const id of ex.sources) assert.ok(D.sources[id], id);
+});
+
+/* ------------------------------------------------------------------------- *
+ *  Pilot invariants (HE): even indices, symmetric around DC, counts 8/16/16/32
+ * ------------------------------------------------------------------------- */
+test('HE pilot indices are even, symmetric around DC and number 8/16/16/32', () => {
+  const counts = { 20: 8, 40: 16, 80: 16, 160: 32 };
+  for (const [bw, n] of Object.entries(counts)) {
+    const pil = C.val(D.generations.HE.toneplan[bw].pilots);
+    assert.equal(pil.length, n, bw + ' MHz count');
+    assert.ok(pil.every((k) => k % 2 === 0), bw + ' MHz even');
+    assert.deepEqual([...pil].map((k) => -k).sort((a, b) => a - b), [...pil].sort((a, b) => a - b), bw + ' MHz symmetric');
+  }
+  const p80 = C.val(D.generations.HE.toneplan[80].pilots);
+  const p160 = C.val(D.generations.HE.toneplan[160].pilots);
+  assert.deepEqual([...p160].sort((a, b) => a - b), [...p80.map((k) => k - 512), ...p80.map((k) => k + 512)].sort((a, b) => a - b),
+    '160 MHz = 80 MHz set shifted by -512 and +512');
+});
+
+test('pilot sets of every generation are symmetric around DC', () => {
+  for (const [gen, g] of Object.entries(D.generations)) for (const bw of g.bandwidths) {
+    const pil = C.val(C.generation(C.toneplanOwner(gen, bw)).toneplan[bw].pilots);
+    assert.deepEqual([...pil].map((k) => -k).sort((a, b) => a - b), [...pil].sort((a, b) => a - b), `${gen} ${bw}`);
+  }
+});
+
+/* ------------------------------------------------------------------------- *
+ *  Results report which unverified data they depend on
+ * ------------------------------------------------------------------------- */
+test('airtime of every HE configuration is labelled as depending on the unverified LDPC constants', () => {
+  const a = C.analyze({ gen: 'HE', bw: 80, gi: 0.8, ltf: '2x', nss: 1, mcs: 11, payload: 1500 });
+  assert.equal(a.unverified.ldpcDependent, true);
+  assert.ok(a.unverified.airtime.includes('ldpc.codewordTable') && a.unverified.airtime.includes('ldpc.extraSymbolCondition'));
+  const b = C.analyze({ gen: 'nonHT', band: '5', mod: '64-QAM', R: '3/4', payload: 1500 });
+  assert.deepEqual(b.unverified, { rate: [], airtime: [], ldpcDependent: false });
+  const v = C.analyze({ gen: 'VHT', bw: 80, gi: 0.8, mcs: 9, payload: 1500 });
+  assert.ok(!v.unverified.rate.includes('generations.VHT.encoders') && v.unverified.airtime.includes('generations.VHT.encoders'));
 });
 
 /* ------------------------------------------------------------------------- *

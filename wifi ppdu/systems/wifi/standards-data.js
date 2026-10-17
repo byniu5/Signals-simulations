@@ -12,7 +12,8 @@
  *    'verified'    the exact value is stated by at least one public secondary source
  *                  found during research (see `evidence`) AND it matches an independent
  *                  check: a second source, arithmetic, or the value written down in the
- *                  pre-research plan before searching (source id 'plan').
+ *                  pre-research plan before searching (source id 'plan'), OR it was supplied in
+ *                  review together with a citation (source kind 'reviewer-cited').
  *    'unverified'  anything else — please check these against the standard.
  *
  *  clause
@@ -57,7 +58,10 @@ var WIFI_STANDARDS = {
     'pat-legacy-sig': { title: 'US patent 10342042 (describes 802.11a SIG tone plan: -26..26, pilots ±7, ±21)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10342042', kind: 'patent' },
     'pat-ht-vht-pilots': { title: 'US patent 10447448 family (HT 40 MHz and VHT 80/160 MHz pilot indices)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10447448', kind: 'patent' },
     'pat-he-pilots-242': { title: 'USPTO patent full text returned by web search for the 242-tone RU pilot indices (exact patent number not recorded)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12294541', kind: 'patent' },
-    'pat-he-pilots-80': { title: 'US patents 12167410 and 12587328 (80 MHz 996-tone and 484-tone RU pilot indices; texts also cover 802.11be)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410', kind: 'patent' },
+    'pat-he-pilots-80': { title: 'US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410', kind: 'patent' },
+    'ieee-16-0623': { title: 'IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx', kind: 'reviewer-cited' },
+    'mw-hesuconfig': { title: 'MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.', url: 'https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html', kind: 'reviewer-cited' },
+    'pat-preamble-11a': { title: 'US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972', kind: 'patent' },
     'pat-phase-rot': { title: 'US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172', kind: 'patent' },
     'keysight-nonht-dup': { title: 'Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)', url: 'https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm', kind: 'vendor' },
     'pat-padding': { title: 'US 2022/0053371 A1 (Newracom) and US 12096275 — reproduce the 802.11ax pre-FEC padding equations', url: 'https://patents.google.com/patent/US20220053371A1/en', kind: 'patent' },
@@ -75,7 +79,7 @@ var WIFI_STANDARDS = {
     'mw-duration': { title: 'MathWorks WLAN Toolbox: Packet Size and Duration Dependencies (TXTIME in 19.4.3 / 21.4.3 of 802.11-2016)', url: 'https://www.mathworks.com/help/wlan/gs/packet-size-and-duration-dependencies.html', kind: 'vendor' },
     'rs-rates': { title: 'Rohde & Schwarz: Wi-Fi data rates (HT/VHT/HE MCS rate tables)', url: 'https://rs-nc.rohde-schwarz.com/en/products/wireless-lan/wi-fi-data-rates', kind: 'vendor' },
     'cts-ru': { title: 'CTS 160: 802.11ax OFDMA Resource Units (data/pilot split per RU)', url: 'https://www.cleartosend.net/802-11ax-ofdma-resource-units/', kind: 'article' },
-    'wiki-difs': { title: 'Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x slot time, per-PHY table)', url: 'https://en.wikipedia.org/wiki/DCF_Interframe_Space', kind: 'encyclopedia' },
+    'wiki-difs': { title: 'Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x aSlotTime, per-PHY table)', url: 'https://en.wikipedia.org/wiki/DCF_Interframe_Space', kind: 'encyclopedia' },
     'wiki-sifs': { title: 'Wikipedia: Short Interframe Space (10 us at 2.4 GHz, 16 us at 5 GHz)', url: 'https://en.wikipedia.org/wiki/Short_Interframe_Space', kind: 'encyclopedia' },
     'arxiv-ldpc': { title: 'arXiv 2003.11234, Joint shortening and puncturing for structured LDPC codes (802.11n N_shrt, N_punc)', url: 'https://arxiv.org/pdf/2003.11234', kind: 'paper' },
     'pat-ldpc-extra': { title: 'US patent 12212413 (LDPC extra-symbol condition with 0.1 and 1.2 factors, longer-codeword variant)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12212413', kind: 'patent' },
@@ -146,6 +150,7 @@ var WIFI_STANDARDS = {
     /* ====================== 802.11a / g : Non-HT ====================== */
     nonHT: {
       label: '802.11a/g', phyName: 'Non-HT (OFDM PHY; ERP-OFDM at 2.4 GHz)', ppduFormat: 'Non-HT PPDU', doc: 'c17',
+      termNames: { T_DFT: 'T_FFT' }, // Clause 17 calls the IFFT/FFT period T_FFT; Clauses 19, 21 and 27 call it T_DFT
       bands: {
         '5':   { label: '5 GHz (802.11a, OFDM PHY)', doc: 'c17' },
         '2.4': { label: '2.4 GHz (802.11g, ERP-OFDM)', doc: 'c18' },
@@ -153,7 +158,7 @@ var WIFI_STANDARDS = {
       bandwidths: [20],
       spatialStreams: [1],
       coding: 'BCC',
-      numerology: {
+      ofdm: {
         subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['keysight-ofdm', 'arith', 'plan'] },
         T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'arith', 'plan'], note: '1 / 312.5 kHz; ns-3: symbol 4 µs = 3.2 + 0.8' },
         guardIntervals: { value: [0.8], unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'] },
@@ -180,17 +185,22 @@ var WIFI_STANDARDS = {
         ],
         status: 'verified', evidence: ['ns3-ofdm', 'plan'],
       },
+      lsigBits: {
+        value: [{ name: 'RATE', bits: 4 }, { name: 'Reserved', bits: 1 }, { name: 'LENGTH', bits: 12 }, { name: 'Parity', bits: 1 }, { name: 'Tail', bits: 6 }],
+        status: 'unverified', evidence: ['plan'], note: '24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers).',
+      },
+      maxPsduOctets: { value: 4095, unit: 'octet', status: 'unverified', evidence: ['plan'], note: 'largest value of the 12-bit LENGTH field' },
       dataField: {
         N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'SERVICE field' },
         N_tail: { value: 6, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'BCC tail per encoder' },
       },
       fields: [
         { name: 'L-STF', alias: 'short training field (Clause 17: PHY preamble, short training symbols)', toneplan: 'legacy',
-          duration: { value: 8, unit: 'µs', status: 'unverified', evidence: ['ns3-ofdm', 'plan'],
-            note: 'ns-3 confirms L-STF + L-LTF = 16 µs; the 8 + 8 split (10 x 0.8 µs short symbols) is not yet confirmed.' } },
+          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan'] },
+          structure: { value: { shortTrainingSymbols: 10, each: 0.8 }, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'plan'] } },
         { name: 'L-LTF', alias: 'long training field (Clause 17: PHY preamble, long training symbols)', toneplan: 'legacy',
-          duration: { value: 8, unit: 'µs', status: 'unverified', evidence: ['ns3-ofdm', 'plan'],
-            note: 'Expected 1.6 µs GI2 + 2 x 3.2 µs; only the 16 µs total is confirmed (ns-3).' } },
+          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan'] },
+          structure: { value: { gi2: 1.6, longTrainingSymbols: 2, each: 3.2 }, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'plan'] } },
         { name: 'L-SIG', alias: 'SIGNAL field (Clause 17 name)', toneplan: 'legacy',
           duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'], note: 'one OFDM symbol, BPSK rate 1/2' } },
         { name: 'Data', kind: 'data' },
@@ -207,7 +217,7 @@ var WIFI_STANDARDS = {
       bandwidths: [20, 40],
       spatialStreams: [1, 2, 3, 4],
       coding: 'BCC',
-      numerology: {
+      ofdm: {
         subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['arith', 'plan'], note: '40 MHz / 128 = 20 MHz / 64' },
         T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: 'ns-3: symbol = 3200 ns + GI' },
         guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: '0.4 µs = short GI' },
@@ -262,7 +272,7 @@ var WIFI_STANDARDS = {
       bandwidths: [20, 40, 80, 160],
       spatialStreams: [1, 2, 3, 4],
       coding: 'BCC',
-      numerology: {
+      ofdm: {
         subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['arith', 'plan'] },
         T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] },
         guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] },
@@ -343,7 +353,7 @@ var WIFI_STANDARDS = {
       bandwidths: [20, 40, 80, 160],
       spatialStreams: [1, 2, 3, 4],
       coding: 'LDPC',
-      numerology: {
+      ofdm: {
         subcarrierSpacingKHz: { value: 78.125, unit: 'kHz', status: 'verified', evidence: ['ns3-he', 'arith', 'plan'], note: '1 / 12.8 µs = 20 MHz / 256' },
         T_DFT: { value: 12.8, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'ns-3: symbol = 12800 ns + GI' },
         guardIntervals: { value: [0.8, 1.6, 3.2], unit: 'µs', status: 'verified', evidence: ['ieee-16-1341', 'plan'] },
@@ -352,26 +362,28 @@ var WIFI_STANDARDS = {
       toneplan: {
         20: {
           occupied: { value: [[-122, -2], [2, 122]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-7 (802.11ax-2021, per ns-3)' },
-          pilots: { value: [-116, -90, -48, -22, 22, 48, 90, 116], status: 'verified', evidence: ['pat-he-pilots-242', 'plan'] },
+          pilots: { value: [-116, -90, -48, -22, 22, 48, 90, 116], status: 'unverified', evidence: ['pat-he-pilots-242', 'plan'],
+            note: 'Stated by one patent; marked unverified in review (not to be derived from the 80 MHz set).' },
           N_SD: { value: 234, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
         },
         40: {
           occupied: { value: [[-244, -3], [3, 244]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-8 (802.11ax-2021, per ns-3)' },
-          pilots: { value: [-238, -212, -170, -144, -104, -78, -36, -10, 10, 36, 78, 104, 144, 170, 212, 238], status: 'unverified', evidence: ['plan', 'pat-he-pilots-80'],
-            note: 'Equals the 80 MHz lower 484-tone RU pilot set from pat-he-pilots-80 shifted by +256 — a derivation, not a direct source.' },
+          pilots: { value: [-238, -212, -170, -144, -104, -78, -36, -10, 10, 36, 78, 104, 144, 170, 212, 238], status: 'unverified', evidence: ['plan'],
+            note: 'Value from the pre-research plan only; no source found.' },
           N_SD: { value: 468, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
         },
         80: {
           occupied: { value: [[-500, -3], [3, 500]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-9 (802.11ax-2021, per ns-3)' },
-          pilots: { value: [-468, -400, -334, -266, -220, -152, -86, -18, 18, 86, 152, 220, 266, 334, 400, 468], status: 'verified', evidence: ['pat-he-pilots-80'],
-            note: 'Two patents agree. The pre-research plan had ±24, ±92, ±158, ±226 for the inner pilots, which was wrong; the patents\' values are used. Patents also discuss 802.11be — please check against 802.11ax.' },
+          pilots: { value: [-468, -400, -334, -266, -226, -158, -92, -24, 24, 92, 158, 226, 266, 334, 400, 468], status: 'verified', evidence: ['ieee-16-0623', 'plan'],
+            clause: 'Table 26-32 of TGax draft (per IEEE 11-16/0623r0, reviewer-cited)',
+            note: 'Corrected in review. The ±18-based set found in patents is the 802.11be design.' },
           N_SD: { value: 980, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
         },
         160: {
           occupied: { value: [[-1012, -515], [-509, -12], [12, 509], [515, 1012]], status: 'verified', evidence: ['ns3-heru', 'plan'] },
-          pilots: { value: [-980, -912, -846, -778, -732, -664, -598, -530, -494, -426, -360, -292, -246, -178, -112, -44,
-                             44, 112, 178, 246, 292, 360, 426, 494, 530, 598, 664, 732, 778, 846, 912, 980],
-            status: 'unverified', evidence: ['pat-he-pilots-80'], note: 'Derived: the 80 MHz 996-tone pilot set shifted by ±512.' },
+          pilots: { value: [-980, -912, -846, -778, -738, -670, -604, -536, -488, -420, -354, -286, -246, -178, -112, -44,
+                             44, 112, 178, 246, 286, 354, 420, 488, 536, 604, 670, 738, 778, 846, 912, 980],
+            status: 'verified', evidence: ['ieee-16-0623'], note: 'The 80 MHz set shifted by −512 and +512 (rule supplied in review).' },
           N_SD: { value: 1960, status: 'verified', evidence: ['ns3-he', 'plan'] },
         },
       },
@@ -414,8 +426,9 @@ var WIFI_STANDARDS = {
         N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['pat-padding', 'plan'] },
         N_tail: { value: 0, unit: 'bit', status: 'verified', evidence: ['pat-padding', 'plan'], note: 'LDPC has no tail bits (N_tail = 6·N_ES only for BCC).' },
         N_DBPS_rounding: { value: 'floor', status: 'unverified', evidence: ['tgbe-ndbps'],
-          note: 'N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector; consistent with published 600.4 Mbps ' +
-            '(8166 / 13.6 µs) for 80 MHz MCS 11 — but R&S publishes 600.5. Check against the HE MCS tables.' },
+          note: 'N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector only. None of the 72 ns-3 HE TXTIME ' +
+            'vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, ' +
+            'MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool.' },
         N_SD_short: {
           value: { 242: 60, 484: 120, 996: 240, 1992: 492 },
           status: 'unverified', evidence: ['pat-nsd-short', 'plan'],
@@ -443,9 +456,8 @@ var WIFI_STANDARDS = {
         /* nominal T_PE indexed [a-1] for each nominal packet padding */
         T_PE: {
           value: { 0: [0, 0, 0, 0], 8: [0, 0, 4, 8], 16: [4, 8, 12, 16] },
-          unit: 'µs', status: 'unverified', evidence: ['pat-pe', 'plan'],
-          note: 'The 16 µs row (4/8/12/16) matches the patents (nominal 16 µs, 4 µs decrement). The 0 and 8 µs rows ' +
-            'were not found in a source.',
+          unit: 'µs', status: 'verified', evidence: ['mw-hesuconfig', 'pat-pe', 'plan'],
+          note: 'Index = a − 1. Values confirmed in review from MathWorks wlanHESUConfig; the 16 µs row also matches the patents.',
         },
       },
       txtime: {
@@ -515,6 +527,91 @@ var WIFI_STANDARDS = {
       note: 'OFDM PPDUs in the 2.4 GHz band end with a 6 µs signal extension (no transmission) so that the receiver has time to finish decoding before SIFS.',
     },
     ackFrameOctets: { value: 14, unit: 'octet', status: 'unverified', evidence: ['plan'] },
+  },
+
+
+  /* ---------------------------------------------------------------------------
+   *  Glossary: official 802.11 terms shown as labels / tooltips.
+   *  doc = top-level clause (see `documents`). `cited` = a sub-clause number quoted
+   *  by a secondary source (edition given) — never read in the standard itself.
+   * ------------------------------------------------------------------------- */
+  terms: {
+    'PPDU': { expansion: 'PHY protocol data unit', doc: 'c17',
+      definition: 'Everything that goes on the air for one transmission: the PHY preamble (training fields), the signal field(s) and the Data field.' },
+    'PSDU': { expansion: 'PHY service data unit', doc: 'c17',
+      definition: 'The bits the MAC hands to the PHY for one PPDU (a MAC frame, or from 802.11n on an aggregate of frames). It is carried inside the Data field.' },
+    'Non-HT PPDU': { doc: 'c17',
+      definition: 'The PPDU format of the OFDM PHY (802.11a, 5 GHz) and of ERP-OFDM (802.11g, 2.4 GHz). Later PHYs still use it for control frames and as the first part of their own preambles.' },
+    'PHY preamble': { doc: 'c17', cited: { ref: '17.3.3 "PHY preamble (SYNC)" (802.11-2016 numbering)', source: 'ns3-ofdm' },
+      definition: 'The training fields at the start of a PPDU (L-STF and L-LTF) that let the receiver detect the packet, set its gain, synchronize and estimate the channel.' },
+    'L-STF': { expansion: 'Non-HT (legacy) Short Training field', doc: 'c17', cited: { ref: '17.3.3 (802.11-2016 numbering)', source: 'ns3-ofdm' },
+      definition: 'Ten repetitions of a 0.8 µs short training symbol (8 µs). Used for packet detection, automatic gain control (AGC), coarse carrier-frequency-offset estimation and timing. A 0.8 µs period is a quarter of T_FFT, so only every fourth subcarrier is used.' },
+    'L-LTF': { expansion: 'Non-HT (legacy) Long Training field', doc: 'c17', cited: { ref: '17.3.3 (802.11-2016 numbering)', source: 'ns3-ofdm' },
+      definition: 'A 1.6 µs guard interval (T_GI2) followed by two identical 3.2 µs long training symbols with known values on every used subcarrier (8 µs). Used for fine frequency-offset estimation and channel estimation: dividing what is received on each subcarrier by the known value gives that subcarrier\'s complex channel gain. This per-subcarrier estimate is the channel state information (CSI).' },
+    'L-SIG': { expansion: 'Non-HT (legacy) SIGNAL field', alias: 'SIGNAL field (Clause 17 name)', doc: 'c17',
+      definition: 'One OFDM symbol (4 µs), always BPSK rate 1/2, carrying RATE and LENGTH. From them every receiver — including older ones — computes how long the PPDU lasts and stays quiet for that time.' },
+    'RATE': { doc: 'c17', definition: 'The 4-bit L-SIG subfield that tells a Non-HT receiver the modulation and coding rate of the Data field.' },
+    'LENGTH': { doc: 'c17', definition: 'The 12-bit L-SIG subfield with the PSDU length in octets (Non-HT). In HT/VHT/HE PPDUs it is set so that legacy receivers compute the right duration.' },
+    'Data field': { doc: 'c17',
+      definition: 'The part of the PPDU after the preamble and signal fields: SERVICE field + PSDU + tail bits + pad bits, coded and modulated onto N_SYM OFDM symbols.' },
+    'SERVICE field': { doc: 'c17',
+      definition: 'The first 16 bits of the Data field. Its first bits are zero so the receiver can recover the scrambler\'s initial state; the rest are reserved.' },
+    'Tail bits': { doc: 'c17',
+      definition: 'Six zero bits per BCC encoder appended after the PSDU, returning the convolutional encoder to the all-zero state so the decoder can terminate cleanly.' },
+    'Pad bits': { doc: 'c17',
+      definition: 'Bits added after the tail so that the Data field fills a whole number of OFDM symbols (N_SYM · N_DBPS bits).' },
+    'OFDM symbol': { doc: 'c17',
+      definition: 'One output block of the IFFT plus its guard interval. All subcarriers are transmitted in parallel for T_SYM; the constellation points change from one OFDM symbol to the next.' },
+    'Subcarrier': { alias: 'tone (802.11ax wording)', doc: 'c17',
+      definition: 'One of the N_FFT orthogonal frequencies of the OFDM signal, spaced Δ_F apart. Each carries one constellation point (or nothing) per OFDM symbol.' },
+    'Data subcarrier': { doc: 'c17', definition: 'A subcarrier that carries data: one constellation point with N_BPSCS coded bits per spatial stream in each OFDM symbol.' },
+    'Pilot subcarrier': { doc: 'c17',
+      definition: 'A subcarrier with a known BPSK value at a fixed index. The receiver uses pilots to track residual carrier-frequency offset and phase noise during the Data field. Their sign follows a pilot polarity sequence from symbol to symbol.' },
+    'DC subcarrier': { doc: 'c17',
+      definition: 'The subcarrier(s) at and around index 0, left empty: a direct-conversion receiver has DC offset and local-oscillator leakage exactly there.' },
+    'Guard subcarriers': { doc: 'c17',
+      definition: 'Unused subcarriers at both band edges. They keep the transmitted spectrum inside the spectral mask and leave room for the analog filters.' },
+    'Null subcarrier': { doc: 'c21',
+      definition: 'Any other subcarrier that carries no energy — here the centre subcarriers of each 80 MHz half of a 160 MHz channel.' },
+    'FFT size': { doc: 'c17',
+      definition: 'Number of points of the IFFT (transmitter) / FFT (receiver) = number of subcarrier positions N_FFT. Sample rate = N_FFT · Δ_F, i.e. 20 Msample/s for 64 points at 312.5 kHz.' },
+    'Δ_F': { expansion: 'subcarrier frequency spacing', doc: 'c17',
+      definition: 'Distance between adjacent subcarriers: 20 MHz / 64 = 312.5 kHz in Clauses 17, 19, 21; 78.125 kHz for HE (Clause 27). Its inverse is the useful symbol duration.' },
+    'T_FFT': { expansion: 'IFFT/FFT period (Clause 17 name; Clauses 19, 21, 27 call it T_DFT)', doc: 'c17', cited: { ref: '17.3.2.4 Table 17-5 "Timing-related parameters" (802.11-2016 numbering)', source: 'ns3-ofdm' },
+      definition: 'Duration of the useful part of an OFDM symbol, T_FFT = 1/Δ_F = 3.2 µs. The receiver\'s FFT window covers exactly this part.' },
+    'T_DFT': { expansion: 'IDFT/DFT period (Clauses 19, 21, 27 name; Clause 17 calls it T_FFT)', doc: 'c19',
+      definition: 'Duration of the useful part of an OFDM symbol, 1/Δ_F: 3.2 µs for HT and VHT, 12.8 µs for HE.' },
+    'Guard interval': { expansion: 'GI, duration T_GI', doc: 'c17',
+      definition: 'Time added before the useful part of every OFDM symbol (0.8 µs in Non-HT). It absorbs the echoes of the previous symbol (multipath delay spread) so that symbols do not interfere.' },
+    'Cyclic prefix': { doc: 'c17',
+      definition: 'How the guard interval is filled: with a copy of the last T_GI of the useful part. Inside the FFT window the channel then acts as a circular convolution, so each subcarrier sees just one complex gain — a one-tap equalizer per subcarrier is enough.' },
+    'T_SYM': { expansion: 'symbol interval', doc: 'c17', definition: 'Duration of one OFDM symbol: T_SYM = T_GI + T_FFT (4.0 µs in Non-HT).' },
+    'T_GI2': { expansion: 'training symbol guard interval', doc: 'c17', definition: 'The 1.6 µs double guard interval in front of the two long training symbols of the L-LTF.' },
+    'N_SD': { expansion: 'number of data subcarriers', doc: 'c17', definition: 'Subcarriers that carry data in each OFDM symbol (48 in Non-HT).' },
+    'N_SP': { expansion: 'number of pilot subcarriers', doc: 'c17', definition: 'Subcarriers that carry pilots (4 in Non-HT).' },
+    'N_ST': { expansion: 'total number of subcarriers', doc: 'c17', definition: 'N_ST = N_SD + N_SP: all subcarriers that carry energy.' },
+    'N_BPSCS': { expansion: 'coded bits per subcarrier per spatial stream', doc: 'c17', definition: 'log2 of the constellation size: 1 (BPSK), 2 (QPSK), 4 (16-QAM), 6 (64-QAM), 8 (256-QAM), 10 (1024-QAM).' },
+    'N_CBPS': { expansion: 'coded bits per OFDM symbol', doc: 'c17', definition: 'N_CBPS = N_SD · N_BPSCS · N_SS — what one OFDM symbol carries after channel coding.' },
+    'N_DBPS': { expansion: 'data bits per OFDM symbol', doc: 'c17', definition: 'N_DBPS = N_CBPS · R — the information bits per OFDM symbol before coding. Data rate = N_DBPS / T_SYM.' },
+    'N_SS': { expansion: 'number of spatial streams', doc: 'c19', definition: 'Independent data streams sent at the same time over multiple antennas (always 1 in Non-HT).' },
+    'N_SYM': { expansion: 'number of OFDM symbols in the Data field', doc: 'c17', cited: { ref: 'equation 19-32 (802.11-2016 numbering, BCC case)', source: 'ns3-ofdm' },
+      definition: 'With BCC: N_SYM = ceil((16 + 8·LENGTH + 6·N_ES) / N_DBPS) — SERVICE, PSDU and tail bits, rounded up to whole symbols.' },
+    'N_PAD': { expansion: 'number of pad bits', doc: 'c17', definition: 'N_PAD = N_SYM · N_DBPS − (16 + 8·LENGTH + 6·N_ES).' },
+    'N_ES': { expansion: 'number of BCC encoders', doc: 'c19', definition: 'Parallel convolutional encoders used at high rates (always 1 in Non-HT). Each adds 6 tail bits.' },
+    'R': { expansion: 'coding rate', doc: 'c17', definition: 'Ratio of information bits to coded bits: 1/2, 2/3, 3/4 (and 5/6 from HT on).' },
+    'BCC': { expansion: 'binary convolutional code', doc: 'c17', definition: 'The rate-1/2 convolutional code of the OFDM PHY, punctured to 2/3 or 3/4 (5/6 from HT on).' },
+    'Data rate': { doc: 'c17', definition: 'N_DBPS / T_SYM: information bits delivered per microsecond during the Data field (Mb/s).' },
+    'TXTIME': { doc: 'c17', definition: 'The time the PHY needs to transmit the whole PPDU, computed from the parameters. The MAC uses it for timing (e.g. the Duration field and NAV).' },
+    'Signal extension': { doc: 'c18', cited: { ref: 'ERP-OFDM, 2.4 GHz', source: 'ns3-ofdm' },
+      definition: 'A 6 µs period of no transmission after an OFDM PPDU in the 2.4 GHz band. With the 10 µs SIFS of 2.4 GHz it gives the receiver the same 16 µs of decoding time as SIFS at 5 GHz.' },
+    'ERP-OFDM': { expansion: 'Extended Rate PHY with OFDM (802.11g)', doc: 'c18', definition: 'The OFDM modulation of Clause 17 used in the 2.4 GHz band, with a signal extension.' },
+    'CSI': { expansion: 'channel state information', doc: 'c19',
+      definition: 'The receiver\'s estimate of the channel: one complex gain (amplitude and phase) per subcarrier and antenna pair, obtained from the long training field(s).' },
+    'Constellation mapping': { doc: 'c17', definition: 'Grouping N_BPSCS coded bits and turning them into one complex point (BPSK, QPSK, 16-QAM, 64-QAM …). This is where bits become symbols.' },
+    'IFFT': { expansion: 'inverse fast Fourier transform', doc: 'c17', definition: 'Turns the N_FFT subcarrier values of one OFDM symbol into N_FFT time-domain samples (the useful part).' },
+    'Channel bandwidth': { doc: 'c17', definition: 'Width of the channel: 20 MHz for Non-HT; 40 MHz from HT; 80/160 MHz from VHT.' },
+    'Band': { doc: 'c17', definition: 'Frequency band of operation: 5 GHz (802.11a, Clause 17) or 2.4 GHz (802.11g ERP-OFDM, Clause 18). The band changes SIFS, aSlotTime and the signal extension.' },
+    'MCS': { expansion: 'modulation and coding scheme', doc: 'c19', definition: 'Index for a combination of modulation and coding rate (HT and later). Non-HT has no MCS — it signals a data rate in RATE.' },
   },
 
   /* ---------------------------------------------------------------------------

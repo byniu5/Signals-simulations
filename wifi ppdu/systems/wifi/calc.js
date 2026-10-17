@@ -28,6 +28,15 @@
       return out;
     };
 
+    /* ---------- dependency tracking ----------
+     * While analyze() runs, every *unverified* data entry that is read is recorded
+     * with its path, so each result can say which unverified values it depends on. */
+    let deps = null;
+    function use(entry, path) {
+      if (deps && entry && typeof entry === 'object' && entry.status === 'unverified') deps.add(path);
+      return val(entry);
+    }
+
     function generation(id) {
       const g = D.generations[id];
       if (!g) throw new Error('Unknown PHY generation: ' + id);
@@ -45,11 +54,14 @@
      *    null   – other interior nulls (e.g. the centre of each 80 MHz half at 160 MHz)
      *    guard  – nulled at the band edges so the spectrum fits the channel mask
      * ==================================================================== */
-    function toneplanEntry(genId, bw) {
-      let tp = generation(genId).toneplan[bw];
+    /** Generation whose tone plan is used (VHT 20/40 MHz reuse the HT plans). */
+    function toneplanOwner(genId, bw) {
+      const tp = generation(genId).toneplan[bw];
       if (!tp) throw new Error(`${genId} has no tone plan for ${bw} MHz`);
-      if (tp.sameAs) tp = generation(tp.sameAs).toneplan[bw];
-      return tp;
+      return tp.sameAs || genId;
+    }
+    function toneplanEntry(genId, bw) {
+      return generation(toneplanOwner(genId, bw)).toneplan[bw];
     }
 
     function classify(fft, occupiedList, pilotList) {
@@ -86,16 +98,16 @@
       }, extra);
     }
 
-    /** Subcarrier map of the Data field (and the fields that share its numerology). */
+    /** Subcarrier map of the Data field (and the fields that share its OFDM parameters). */
     function dataToneMap(genId, bw) {
       const g = generation(genId);
-      const fft = val(g.numerology.fftSize)[bw];
+      const fft = val(g.ofdm.fftSize)[bw];
       const tp = toneplanEntry(genId, bw);
       const tones = classify(fft, expand(val(tp.occupied)), val(tp.pilots));
       return summarizeTones(tones, {
         field: 'data',
         fft,
-        spacingKHz: val(g.numerology.subcarrierSpacingKHz),
+        spacingKHz: val(g.ofdm.subcarrierSpacingKHz),
         expectedN_SD: val(tp.N_SD),
       });
     }
@@ -154,7 +166,7 @@
     function numEncoders(cfg, rateMbps) {
       if (cfg.gen === 'nonHT') return 1;
       const g = generation(cfg.gen);
-      const enc = val(g.encoders);
+      const enc = use(g.encoders, `generations.${cfg.gen}.encoders`);
       if (enc.exceptions) {
         const x = enc.exceptions.find((e) => e.bw === cfg.bw && e.nss === cfg.nss && e.mcs === cfg.mcs);
         if (x) return x.N_ES;
@@ -172,19 +184,25 @@
     function symbolParams(cfg) {
       const g = generation(cfg.gen);
       const tones = dataToneMap(cfg.gen, cfg.bw);
-      const N_BPSCS = val(D.modulations[cfg.mod].N_BPSCS);
+      const N_BPSCS = use(D.modulations[cfg.mod].N_BPSCS, `modulations.${cfg.mod}.N_BPSCS`);
+      const owner = toneplanOwner(cfg.gen, cfg.bw);
+      use(generation(owner).toneplan[cfg.bw].N_SD, `generations.${owner}.toneplan.${cfg.bw}.N_SD`);
       const R = parseRate(cfg.R);
       const N_SS = cfg.nss;
       const N_CBPS = tones.N_SD * N_BPSCS * N_SS;
       const N_DBPS_exact = (N_CBPS * R.n) / R.d;
       let N_DBPS = N_DBPS_exact;
+      let N_DBPS_rule = 'integer';
       let fractionalN_DBPS = false; // true = combination not defined by this generation's MCS tables
       if (!Number.isInteger(N_DBPS_exact)) {
-        const rule = g.dataField.N_DBPS_rounding ? val(g.dataField.N_DBPS_rounding) : null;
-        if (rule === 'floor') N_DBPS = Math.floor(N_DBPS_exact);
+        // cfg.ndbpsRounding ('floor' | 'exact') overrides the data file — used to test the convention
+        const rule = cfg.ndbpsRounding ||
+          (g.dataField.N_DBPS_rounding ? use(g.dataField.N_DBPS_rounding, `generations.${cfg.gen}.dataField.N_DBPS_rounding`) : null);
+        if (rule === 'floor') { N_DBPS = Math.floor(N_DBPS_exact); N_DBPS_rule = 'floor'; }
+        else if (rule === 'exact') N_DBPS_rule = 'exact';
         else fractionalN_DBPS = true;
       }
-      const T_DFT_ns = ns(val(g.numerology.T_DFT));
+      const T_DFT_ns = ns(use(g.ofdm.T_DFT, `generations.${cfg.gen}.ofdm.T_DFT`));
       const T_GI_ns = ns(cfg.gi);
       const T_SYM_ns = T_DFT_ns + T_GI_ns;
       const rateMbps = (N_DBPS * 1000) / T_SYM_ns;
@@ -192,7 +210,7 @@
       return {
         N_FFT: tones.fft, spacingKHz: tones.spacingKHz,
         N_SD: tones.N_SD, N_SP: tones.N_SP, N_ST: tones.N_ST,
-        N_BPSCS, R, N_SS, N_CBPS, N_DBPS, N_DBPS_exact, fractionalN_DBPS,
+        N_BPSCS, R, N_SS, N_CBPS, N_DBPS, N_DBPS_exact, N_DBPS_rule, fractionalN_DBPS,
         T_DFT_ns, T_GI_ns, T_SYM_ns, rateMbps, exactRateMbps,
         N_ES: g.coding === 'BCC' ? numEncoders(cfg, rateMbps) : null,
       };
@@ -209,8 +227,9 @@
      */
     function bccSymbols(cfg, p) {
       const df = generation(cfg.gen).dataField;
-      const N_service = val(df.N_service);
-      const N_tail = val(df.N_tail) * p.N_ES;
+      const base = `generations.${cfg.gen}.dataField`;
+      const N_service = use(df.N_service, base + '.N_service');
+      const N_tail = use(df.N_tail, base + '.N_tail') * p.N_ES;
       const bits = N_service + 8 * cfg.payload + N_tail;
       const N_SYM = Math.ceil(bits / p.N_DBPS);
       return {
@@ -221,7 +240,7 @@
 
     /** LDPC codeword parameters for N_pld information bits into N_avbits coded bits. */
     function ldpcParams(N_pld, N_avbits, R) {
-      const rows = val(D.ldpc.codewordTable);
+      const rows = use(D.ldpc.codewordTable, 'ldpc.codewordTable');
       const oneMinusR = 1 - R.value;
       let N_CW, L;
       const row = rows.find((r) => r.maxAvbits === null || N_avbits <= r.maxAvbits);
@@ -235,10 +254,11 @@
       const K = (N_CW * L * R.n) / R.d;              // information bits the codewords can hold
       const N_shrt = Math.max(0, K - N_pld);           // shortening bits (zeros, not transmitted)
       const N_punc = Math.max(0, N_CW * L - N_avbits - N_shrt); // parity bits removed to fit
-      const c = val(D.ldpc.extraSymbolCondition);
-      const extra = N_punc > c.puncturedFraction * N_CW * L * oneMinusR &&
-                    N_shrt < (c.shorteningFactor * N_punc * R.value) / oneMinusR;
-      return { N_CW, L_LDPC: L, N_shrt, N_punc, extraSegment: extra };
+      const c = use(D.ldpc.extraSymbolCondition, 'ldpc.extraSymbolCondition');
+      const puncLimit = c.puncturedFraction * N_CW * L * oneMinusR;       // N_punc must exceed this ...
+      const shrtLimit = (c.shorteningFactor * N_punc * R.value) / oneMinusR; // ... and N_shrt stay below this
+      const extra = N_punc > puncLimit && N_shrt < shrtLimit;
+      return { N_CW, L_LDPC: L, N_shrt, N_punc, puncLimit, shrtLimit, extraSegment: extra };
     }
 
     /**
@@ -249,10 +269,12 @@
     function heLdpcSymbols(cfg, p) {
       const g = generation(cfg.gen);
       const df = g.dataField;
-      const N_service = val(df.N_service);
-      const N_tail = val(df.N_tail);
+      const base = `generations.${cfg.gen}.dataField`;
+      const N_service = use(df.N_service, base + '.N_service');
+      const N_tail = use(df.N_tail, base + '.N_tail');
+      use(g.padding.equations, `generations.${cfg.gen}.padding.equations`);
       const ruTones = p.N_ST; // HE SU: the whole channel is one RU (242/484/996/2x996 tones)
-      const N_SD_short = val(df.N_SD_short)[ruTones];
+      const N_SD_short = use(df.N_SD_short, base + '.N_SD_short')[ruTones];
       if (N_SD_short === undefined) throw new Error('No N_SD,short for RU size ' + ruTones);
       const N_CBPS_short = N_SD_short * p.N_BPSCS * p.N_SS;
       const N_DBPS_short = (N_CBPS_short * p.R.n) / p.R.d;
@@ -286,14 +308,15 @@
     /* ======================================================================
      *  PPDU timeline and TXTIME
      * ==================================================================== */
+    /** Duration entry of a preamble field (fields marked ref: 'nonHT' reuse the Non-HT definition). */
     function fieldDuration(genId, field) {
-      if (field.duration) return field.duration;
-      if (field.ref) return generation(field.ref).fields.find((f) => f.name === field.name).duration;
-      return null;
+      const owner = field.duration ? genId : field.ref;
+      const f = field.duration ? field : generation(owner).fields.find((x) => x.name === field.name);
+      return use(f.duration, `generations.${owner}.fields[${field.name}].duration`);
     }
 
     function numLtf(cfg) {
-      return val(generation(cfg.gen).N_LTF)[cfg.nss];
+      return use(generation(cfg.gen).N_LTF, `generations.${cfg.gen}.N_LTF`)[cfg.nss];
     }
 
     function timeline(cfg, p, sym) {
@@ -308,32 +331,32 @@
           continue;
         }
         if (f.kind === 'pe') {
-          const T_PE = val(g.packetExtension.T_PE)[cfg.nominalPadding][sym.a - 1];
+          const T_PE = use(g.packetExtension.T_PE, `generations.${cfg.gen}.packetExtension.T_PE`)[cfg.nominalPadding][sym.a - 1];
           if (T_PE > 0) push({ name: 'PE', kind: 'pe', dur_ns: ns(T_PE) });
           continue;
         }
         if (f.count === 'N_LTF') {
           const n = numLtf(cfg);
           let each;
-          if (f.durationEach === 'heLtf') each = ns(val(g.heLtf.symbolWithoutGi)[cfg.ltf]) + p.T_GI_ns;
-          else each = ns(val(f.durationEach));
+          if (f.durationEach === 'heLtf') each = ns(use(g.heLtf.symbolWithoutGi, `generations.${cfg.gen}.heLtf.symbolWithoutGi`)[cfg.ltf]) + p.T_GI_ns;
+          else each = ns(use(f.durationEach, `generations.${cfg.gen}.fields[${f.name}].durationEach`));
           push({ name: f.name, kind: 'training', count: n, each_ns: each, dur_ns: n * each, toneplan: 'data' });
           continue;
         }
-        const d = fieldDuration(cfg.gen, f);
-        push({ name: f.name, kind: /STF|LTF/.test(f.name) ? 'training' : 'signal', dur_ns: ns(val(d)),
+        push({ name: f.name, kind: /STF|LTF/.test(f.name) ? 'training' : 'signal', dur_ns: ns(fieldDuration(cfg.gen, f)),
                toneplan: f.toneplan === 'legacy' ? 'legacy' : 'data' });
       }
 
       const onAir_ns = t;
       // HT-mixed / VHT short GI: TXTIME rounds the data part up to the 4 µs legacy symbol grid.
-      if (g.txtime && val(g.txtime.shortGiRounding) && p.T_GI_ns < ns(0.8)) {
-        const sym4 = ns(val(g.txtime.legacySymbol));
+      if (g.txtime && g.txtime.shortGiRounding && p.T_GI_ns < ns(0.8) &&
+          use(g.txtime.shortGiRounding, `generations.${cfg.gen}.txtime.shortGiRounding`)) {
+        const sym4 = ns(use(g.txtime.legacySymbol, `generations.${cfg.gen}.txtime.legacySymbol`));
         const data = items.find((i) => i.kind === 'data');
         const rounded = Math.ceil(data.dur_ns / sym4) * sym4;
         if (rounded > data.dur_ns) push({ name: 'Short-GI alignment', kind: 'gap', dur_ns: rounded - data.dur_ns });
       }
-      const sigExt = val(D.interframe.signalExtension)[cfg.band] || 0;
+      const sigExt = use(D.interframe.signalExtension, 'interframe.signalExtension')[cfg.band] || 0;
       if (sigExt > 0) push({ name: 'Signal extension', kind: 'gap', dur_ns: ns(sigExt) });
 
       return { items, onAir_ns, txtime_ns: t };
@@ -349,7 +372,7 @@
       const bands = Object.keys(g.bands);
       const band = bands.includes(cfg.band) ? cfg.band : (bands.includes('5') ? '5' : bands[0]);
       const bandwidths = g.bands[band].bandwidths || g.bandwidths;
-      const guardIntervals = val(g.numerology.guardIntervals);
+      const guardIntervals = val(g.ofdm.guardIntervals);
       const ltfTypes = g.heLtf ? val(g.heLtf.allowedWithGi) : null;
       return { bands, band, bandwidths, guardIntervals, ltfTypes, spatialStreams: g.spatialStreams, mcs: mcsOptions(cfg.gen) };
     }
@@ -389,19 +412,33 @@
     /** Everything the views need for one configuration. */
     function analyze(input) {
       const { cfg, notes } = normalize(input);
-      const p = symbolParams(cfg);
-      const sym = dataSymbols(cfg, p);
-      const tl = timeline(cfg, p, sym);
-      return {
-        cfg, notes,
-        excluded: exclusion(cfg),
-        mcsIndex: displayMcs(cfg),
-        params: p,
-        symbols: sym,
-        timeline: tl,
-        dataTones: dataToneMap(cfg.gen, cfg.bw),
-        legacyTones: legacyToneMap(cfg.bw),
-      };
+      deps = new Set();
+      try {
+        const excluded = exclusion(cfg);
+        if (excluded && excluded.status === 'unverified') deps.add(`generations.${cfg.gen}.exclusions`);
+        const p = symbolParams(cfg);
+        // N_ES (BCC encoder count) is computed alongside the rate but only affects N_SYM, not the rate
+        const rateDeps = [...deps].filter((d) => !d.endsWith('.encoders'));
+        const sym = dataSymbols(cfg, p);
+        const tl = timeline(cfg, p, sym);
+        const airtimeDeps = [...deps];
+        return {
+          cfg, notes, excluded,
+          unverified: {
+            rate: rateDeps,                // unverified entries the data rate depends on
+            airtime: airtimeDeps,          // ... and the TXTIME / N_SYM (superset)
+            ldpcDependent: airtimeDeps.some((d) => d.startsWith('ldpc.')),
+          },
+          mcsIndex: displayMcs(cfg),
+          params: p,
+          symbols: sym,
+          timeline: tl,
+          dataTones: dataToneMap(cfg.gen, cfg.bw),
+          legacyTones: legacyToneMap(cfg.bw),
+        };
+      } finally {
+        deps = null;
+      }
     }
 
     /** Evaluate the built-in check table. */
@@ -420,7 +457,7 @@
 
     return {
       data: D, val, ns,
-      generation, options, normalize, analyze, runChecks,
+      generation, options, normalize, analyze, runChecks, toneplanOwner,
       dataToneMap, legacyToneMap, symbolParams, dataSymbols, ldpcParams, timeline, exclusion, displayMcs,
     };
   }
