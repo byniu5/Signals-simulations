@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signals // Simulations</title>
+<meta name="description" content="Interactive simulations of radio, antenna and signal-processing concepts.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='8' cy='16' r='4' fill='%23fbbf24'/%3E%3Cpath d='M14 8a11 11 0 0 1 0 16M19 4a17 17 0 0 1 0 24' fill='none' stroke='%2338bdf8' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #070a12;
+    --panel: rgba(17, 24, 39, .72);
+    --line: #1c2740;
+    --line-2: #2a3a5c;
+    --text: #e6eaf2;
+    --muted: #8b98b3;
+    --cyan: #38bdf8;
+    --amber: #fbbf24;
+    --phosphor: #34d399;
+    --magenta: #f472b6;
+    --mono: ui-monospace, "JetBrains Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    min-height: 100vh;
+    background:
+      radial-gradient(1200px 600px at 85% -10%, rgba(56,189,248,.10), transparent 60%),
+      radial-gradient(900px 500px at -10% 20%, rgba(244,114,182,.06), transparent 60%),
+      var(--bg);
+    color: var(--text);
+    font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  /* faint measurement grid */
+  body::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background-image:
+      linear-gradient(rgba(56,189,248,.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(56,189,248,.045) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: linear-gradient(to bottom, #000 0%, transparent 85%);
+  }
+  #rings { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+  .wrap { position: relative; z-index: 1; max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+
+  /* ---------- top bar ---------- */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    padding: 16px 0; font-family: var(--mono); font-size: .78rem; color: var(--muted);
+    border-bottom: 1px solid var(--line);
+  }
+  .brand { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 600; letter-spacing: .04em; }
+  .brand svg { width: 22px; height: 22px; }
+  .telemetry { display: flex; gap: 18px; flex-wrap: wrap; }
+  .telemetry b { color: var(--phosphor); font-weight: 600; }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--phosphor);
+         box-shadow: 0 0 8px var(--phosphor); margin-right: 6px; animation: blink 2.4s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  /* ---------- hero ---------- */
+  .hero { display: grid; grid-template-columns: 1.1fr 1fr; gap: 32px; align-items: center; padding: 56px 0 36px; }
+  @media (max-width: 860px) { .hero { grid-template-columns: 1fr; padding-top: 36px; } }
+  .eyebrow { font-family: var(--mono); font-size: .78rem; color: var(--cyan); letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 10px 0 14px; font-size: clamp(2.1rem, 5vw, 3.4rem); line-height: 1.05; letter-spacing: -.02em; }
+  h1 .slash { color: var(--cyan); font-weight: 300; }
+  h1 .grad { background: linear-gradient(90deg, var(--cyan), var(--phosphor) 55%, var(--amber));
+             -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .lead { color: #b9c3d8; max-width: 52ch; margin: 0; font-size: 1.05rem; }
+  .scope {
+    position: relative; border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(10,18,30,.9), rgba(6,10,18,.95));
+    box-shadow: 0 0 0 1px rgba(52,211,153,.05), 0 20px 60px -20px rgba(52,211,153,.25);
+  }
+  .scope canvas { display: block; width: 100%; height: 220px; }
+  .scope .hud { position: absolute; left: 12px; right: 12px; top: 10px; display: flex; justify-content: space-between;
+                font-family: var(--mono); font-size: .72rem; color: rgba(52,211,153,.85); pointer-events: none; }
+  .scope .hud span:last-child { color: var(--amber); }
+  .scope .modes { position: absolute; left: 12px; bottom: 10px; display: flex; gap: 6px; }
+  .scope .modes button {
+    font: 600 .7rem var(--mono); color: var(--muted); background: rgba(7,10,18,.8);
+    border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 8px; cursor: pointer; letter-spacing: .06em;
+  }
+  .scope .modes button.on { color: var(--phosphor); border-color: var(--phosphor); }
+
+  /* ---------- controls ---------- */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 8px 0 20px; }
+  .search {
+    flex: 1 1 260px; display: flex; align-items: center; gap: 8px;
+    background: var(--panel); border: 1px solid var(--line-2); border-radius: 10px; padding: 0 12px;
+  }
+  .search span { font-family: var(--mono); color: var(--cyan); }
+  .search input {
+    flex: 1; min-width: 0; background: transparent; border: 0; outline: 0; color: var(--text);
+    font: 0.95rem var(--mono); padding: 10px 0;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font: 600 .74rem var(--mono); letter-spacing: .04em; color: var(--muted); cursor: pointer;
+    background: transparent; border: 1px solid var(--line-2); border-radius: 999px; padding: 5px 11px;
+  }
+  .chip:hover { color: var(--text); }
+  .chip.on { color: #04131c; background: var(--cyan); border-color: var(--cyan); }
+  button:focus-visible, a:focus-visible, input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+
+  .section-title { display: flex; align-items: baseline; gap: 12px; margin: 30px 0 14px; font-family: var(--mono); }
+  .section-title h2 { margin: 0; font-size: .85rem; letter-spacing: .14em; text-transform: uppercase; color: var(--text); }
+  .section-title .rule { flex: 1; height: 1px; background: linear-gradient(90deg, var(--line-2), transparent); }
+  .section-title small { color: var(--muted); font-size: .75rem; }
+
+  /* ---------- cards ---------- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card {
+    position: relative; display: flex; flex-direction: column; text-decoration: none; color: inherit;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px; overflow: hidden;
+    backdrop-filter: blur(6px); transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+  }
+  a.card:hover { transform: translateY(-3px); border-color: var(--cyan); box-shadow: 0 14px 40px -18px rgba(56,189,248,.55); }
+  .card canvas { display: block; width: 100%; height: 150px; background: #060a13; border-bottom: 1px solid var(--line); }
+  .card .body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; flex: 1; }
+  .card .meta { display: flex; justify-content: space-between; align-items: center; font: .7rem var(--mono); color: var(--muted); letter-spacing: .06em; }
+  .card h3 { margin: 0; font-size: 1.08rem; }
+  .card p { margin: 0; color: #aab5cc; font-size: .9rem; }
+  .card .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: auto; padding-top: 8px; }
+  .card .tags span { font: .68rem var(--mono); color: var(--cyan); background: rgba(56,189,248,.08);
+                     border: 1px solid rgba(56,189,248,.2); border-radius: 5px; padding: 1px 6px; }
+  .status { font: 700 .66rem var(--mono); letter-spacing: .1em; padding: 2px 7px; border-radius: 5px; }
+  .status.live { color: var(--phosphor); border: 1px solid rgba(52,211,153,.45); }
+  .status.live::before { content: "● "; }
+  .status.planned { color: var(--amber); border: 1px dashed rgba(251,191,36,.5); }
+  .card.planned { opacity: .62; border-style: dashed; }
+  .card.planned canvas { filter: grayscale(.6); }
+  .card .go { position: absolute; right: 14px; top: 12px; font: 600 .72rem var(--mono); color: var(--cyan);
+              background: rgba(7,10,18,.85); border: 1px solid var(--line-2); border-radius: 6px; padding: 3px 8px;
+              opacity: 0; transform: translateY(-4px); transition: .2s; }
+  a.card:hover .go, a.card:focus-visible .go { opacity: 1; transform: none; }
+  .empty { display: none; padding: 30px; text-align: center; color: var(--muted); font-family: var(--mono);
+           border: 1px dashed var(--line-2); border-radius: 14px; }
+
+  footer { margin: 50px 0 30px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted);
+           font: .78rem var(--mono); display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+  footer code { color: var(--amber); }
+
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+</style>
+</head>
+<body>
+<canvas id="rings" aria-hidden="true"></canvas>
+
+<div class="wrap">
+  <div class="topbar">
+    <div class="brand">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="8" cy="16" r="4" fill="#fbbf24"/><path d="M14 8a11 11 0 0 1 0 16M19 4a17 17 0 0 1 0 24" fill="none" stroke="#38bdf8" stroke-width="3" stroke-linecap="round"/></svg>
+      SIGNALS // SIMULATIONS
+    </div>
+    <div class="telemetry">
+      <span><i class="dot"></i>CARRIER <b>LOCKED</b></span>
+      <span>SNR <b id="snr">--.- dB</b></span>
+      <span>CH <b id="chCount">0</b> active</span>
+      <span>UTC <b id="clock">--:--:--</b></span>
+    </div>
+  </div>
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">› interactive lab for wireless geeks</div>
+      <h1>Signals <span class="slash">//</span> <span class="grad">see the physics move</span></h1>
+      <p class="lead">Hands-on simulations of antennas, propagation and modulation. Turn the knobs, watch the waves
+        interfere, and build intuition you can't get from equations alone.</p>
+    </div>
+    <div class="scope">
+      <canvas id="scope" aria-label="Animated oscilloscope trace"></canvas>
+      <div class="hud"><span id="scopeLabel">CH1 · AM · 2 V/div</span><span id="scopeFreq">f₀ 2.400 GHz</span></div>
+      <div class="modes" role="group" aria-label="Modulation shown on the scope">
+        <button type="button" data-mode="AM" class="on">AM</button>
+        <button type="button" data-mode="FM">FM</button>
+        <button type="button" data-mode="BPSK">BPSK</button>
+        <button type="button" data-mode="CHIRP">CHIRP</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="controls">
+    <label class="search"><span>$</span>
+      <input id="q" type="search" placeholder="grep… e.g. antenna, fading" aria-label="Search simulations">
+    </label>
+    <div class="chips" id="chips" role="group" aria-label="Filter by topic"></div>
+  </div>
+
+  <div class="section-title"><h2>On air</h2><span class="rule"></span><small id="liveCount"></small></div>
+  <div class="grid" id="liveGrid"></div>
+
+  <div class="section-title"><h2>On the bench</h2><span class="rule"></span><small>ideas waiting to be built</small></div>
+  <div class="grid" id="plannedGrid"></div>
+
+  <div class="empty" id="empty">no signal — nothing matches that filter</div>
+
+  <footer>
+    <span>add a simulation → append an entry to <code>SIMULATIONS</code> in index.html</span>
+    <span>73 de signals-simulations</span>
+  </footer>
+</div>
+
+<script>
+/* =====================================================================
+ *  ROUTING TABLE
+ *  ---------------------------------------------------------------------
+ *  One entry per simulation. To add a new one, create its folder with an
+ *  index.html and append an entry here.
+ *
+ *    path     relative link to the page (use the full .../index.html so it
+ *             also works when the files are opened straight from disk)
+ *    status   'live' | 'planned'   (planned cards are shown but not clickable)
+ *    preview  name of a card animation in PREVIEWS below ('wave' = generic)
+ * ===================================================================== */
+const SIMULATIONS = [
+  {
+    title: 'Beam steering',
+    subtitle: '4-element phased array',
+    description: 'Shift the phase of each antenna and watch the interference pattern swing the beam. Grating lobes included.',
+    path: 'beam forming/index.html',
+    tags: ['antennas', 'arrays', 'interference'],
+    status: 'live',
+    preview: 'beam',
+  },
+  {
+    title: 'QAM constellation',
+    subtitle: 'symbols in noise',
+    description: 'Drop 4/16/64-QAM symbols into an AWGN channel and see when decisions start to fail.',
+    tags: ['modulation', 'noise'],
+    status: 'planned',
+    preview: 'constellation',
+  },
+  {
+    title: 'OFDM subcarriers',
+    subtitle: 'orthogonality in the spectrum',
+    description: 'Overlapping sinc-shaped subcarriers that still don’t interfere – until a frequency offset arrives.',
+    tags: ['modulation', 'spectrum'],
+    status: 'planned',
+    preview: 'ofdm',
+  },
+  {
+    title: 'Doppler shift',
+    subtitle: 'moving transmitter',
+    description: 'A source moving through the field compresses wavefronts ahead and stretches them behind.',
+    tags: ['propagation'],
+    status: 'planned',
+    preview: 'doppler',
+  },
+  {
+    title: 'Multipath fading',
+    subtitle: 'Rayleigh in motion',
+    description: 'Several reflected paths add with random phases – drive through the deep fades.',
+    tags: ['propagation', 'interference'],
+    status: 'planned',
+    preview: 'fading',
+  },
+  {
+    title: 'Sampling & aliasing',
+    subtitle: 'Nyquist, visually',
+    description: 'Sample a sine slower and slower and watch a different frequency appear out of nowhere.',
+    tags: ['dsp', 'spectrum'],
+    status: 'planned',
+    preview: 'aliasing',
+  },
+];
+
+/* =====================================================================
+ *  Card preview animations   (ctx, w, h, t[s]) → draws one frame
+ * ===================================================================== */
+const TAU = Math.PI * 2;
+const C = { cyan: '#38bdf8', amber: '#fbbf24', ph: '#34d399', mag: '#f472b6', grid: 'rgba(56,189,248,.10)' };
+
+function grid(ctx, w, h, step = 20) {
+  ctx.strokeStyle = C.grid; ctx.lineWidth = 1; ctx.beginPath();
+  for (let x = 0; x <= w; x += step) { ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); }
+  for (let y = 0; y <= h; y += step) { ctx.moveTo(0, y + .5); ctx.lineTo(w, y + .5); }
+  ctx.stroke();
+}
+function gauss() { return Math.sqrt(-2 * Math.log(Math.random() + 1e-9)) * Math.cos(TAU * Math.random()); }
+
+const PREVIEWS = {
+  wave(ctx, w, h, t) {
+    grid(ctx, w, h);
+    ctx.strokeStyle = C.cyan; ctx.lineWidth = 2; ctx.beginPath();
+    for (let x = 0; x <= w; x += 2) { const y = h / 2 + Math.sin(x / 18 - t * 3) * h * .3; x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+  },
+
+  beam(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const ox = w * .12, oy = h / 2, N = 4, d = .5, steer = Math.sin(t * .5) * 50 * Math.PI / 180;
+    // wavefront arcs
+    for (let k = 0; k < 7; k++) {
+      const r = ((t * 28 + k * 26) % 182);
+      ctx.strokeStyle = `rgba(56,189,248,${.35 * (1 - r / 182)})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(ox, oy, r, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+    }
+    // array-factor lobe
+    ctx.beginPath();
+    for (let a = -90; a <= 90; a += 1.5) {
+      const th = a * Math.PI / 180; let re = 0, im = 0;
+      for (let n = 0; n < N; n++) { const p = TAU * d * n * (Math.sin(th) - Math.sin(steer)); re += Math.cos(p); im += Math.sin(p); }
+      const r = Math.hypot(re, im) / N * Math.min(w * .8, h * .46);
+      const x = ox + Math.cos(th) * r, y = oy - Math.sin(th) * r;
+      a === -90 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath(); ctx.fillStyle = 'rgba(56,189,248,.18)'; ctx.fill();
+    ctx.strokeStyle = C.cyan; ctx.lineWidth = 2; ctx.stroke();
+    for (let n = 0; n < N; n++) {
+      ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(ox, oy + (n - 1.5) * 12, 3.5, 0, TAU); ctx.fill();
+    }
+  },
+
+  constellation(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const cx = w / 2, cy = h / 2, s = h * .2, noise = .12 + .1 * (1 + Math.sin(t * .8));
+    ctx.strokeStyle = 'rgba(255,255,255,.15)';
+    ctx.beginPath(); ctx.moveTo(cx, 8); ctx.lineTo(cx, h - 8); ctx.moveTo(cx - h / 2, cy); ctx.lineTo(cx + h / 2, cy); ctx.stroke();
+    for (let k = 0; k < 220; k++) {
+      const i = [-3, -1, 1, 3][(Math.random() * 4) | 0], q = [-3, -1, 1, 3][(Math.random() * 4) | 0];
+      ctx.fillStyle = `rgba(52,211,153,${.5 + Math.random() * .5})`;
+      ctx.fillRect(cx + (i + gauss() * noise * 2) * s * .5 - 1, cy - (q + gauss() * noise * 2) * s * .5 - 1, 2, 2);
+    }
+  },
+
+  ofdm(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const K = 7, base = h * .85, cfo = .25 * Math.sin(t * .7);
+    const cols = [C.cyan, C.ph, C.amber, C.mag, C.cyan, C.ph, C.amber];
+    for (let k = 0; k < K; k++) {
+      ctx.strokeStyle = cols[k]; ctx.lineWidth = 1.6; ctx.beginPath();
+      for (let x = 0; x <= w; x += 2) {
+        const f = (x / w) * (K + 3) - 1.5 - k - cfo;
+        const v = Math.abs(f) < 1e-6 ? 1 : Math.sin(Math.PI * f) / (Math.PI * f);
+        const y = base - v * h * .65;
+        x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+  },
+
+  doppler(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const v = .55, c = 60, period = .45, sx = ((t * v * c) % (w + 80)) - 40;
+    for (let k = 0; k < 10; k++) {
+      const age = (t % period) + k * period, ex = sx - v * c * age, r = c * age;
+      if (r > w) continue;
+      ctx.strokeStyle = `rgba(244,114,182,${.6 * (1 - r / w)})`; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(ex, h / 2, r, 0, TAU); ctx.stroke();
+    }
+    ctx.fillStyle = C.amber; ctx.beginPath(); ctx.arc(sx, h / 2, 4, 0, TAU); ctx.fill();
+  },
+
+  fading(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const paths = [[1, .9, 0], [.8, 1.7, 1.3], [.6, 2.9, 2.1], [.5, 4.3, .4], [.4, 6.1, 3.3]];
+    ctx.strokeStyle = C.amber; ctx.lineWidth = 1.8; ctx.beginPath();
+    for (let x = 0; x <= w; x += 2) {
+      const tt = t * .8 + x / 40; let re = 0, im = 0;
+      for (const [a, f, p] of paths) { re += a * Math.cos(f * tt + p); im += a * Math.sin(f * tt + p); }
+      const db = 20 * Math.log10(Math.hypot(re, im) / 3.3 + 1e-3);
+      const y = h * .2 + Math.min(1, -db / 30) * h * .7;
+      x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke();
+  },
+
+  aliasing(ctx, w, h, t) {
+    grid(ctx, w, h);
+    const f = 3.2, fs = 3.6 + 2.6 * (1 + Math.sin(t * .5)), y0 = h / 2, A = h * .32;
+    ctx.strokeStyle = 'rgba(56,189,248,.55)'; ctx.lineWidth = 1.3; ctx.beginPath();
+    for (let x = 0; x <= w; x += 2) { const y = y0 - A * Math.sin(TAU * f * x / w); x ? ctx.lineTo(x, y) : ctx.moveTo(x, y); }
+    ctx.stroke();
+    const fa = Math.abs(f - Math.round(f / fs) * fs);
+    ctx.strokeStyle = C.mag; ctx.lineWidth = 1.8; ctx.setLineDash([4, 3]); ctx.beginPath();
+    for (let x = 0; x <= w; x += 2) {
+      const sgn = Math.sign(f - Math.round(f / fs) * fs) || 1;
+      const y = y0 - A * sgn * Math.sin(TAU * fa * x / w); x ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+    }
+    ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle = C.amber;
+    for (let n = 0; n <= fs; n++) { const x = n / fs * w; ctx.beginPath(); ctx.arc(x, y0 - A * Math.sin(TAU * f * n / fs), 3, 0, TAU); ctx.fill(); }
+  },
+};
+
+/* =====================================================================
+ *  Build the page from the routing table
+ * ===================================================================== */
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const cards = [];
+
+SIMULATIONS.forEach((sim, i) => {
+  const live = sim.status === 'live' && sim.path;
+  const el = document.createElement(live ? 'a' : 'div');
+  el.className = 'card' + (live ? '' : ' planned');
+  if (live) el.href = encodeURI(sim.path);
+  el.innerHTML = `
+    <canvas aria-hidden="true"></canvas>
+    ${live ? '<span class="go">launch ›</span>' : ''}
+    <div class="body">
+      <div class="meta"><span>CH ${String(i + 1).padStart(2, '0')}</span>
+        <span class="status ${live ? 'live' : 'planned'}">${live ? 'LIVE' : 'PLANNED'}</span></div>
+      <h3>${esc(sim.title)}</h3>
+      <div class="meta"><span>${esc(sim.subtitle || '')}</span></div>
+      <p>${esc(sim.description || '')}</p>
+      <div class="tags">${(sim.tags || []).map(t => `<span>#${esc(t)}</span>`).join('')}</div>
+    </div>`;
+  (live ? $('#liveGrid') : $('#plannedGrid')).appendChild(el);
+  cards.push({ sim, el, canvas: el.querySelector('canvas'), draw: PREVIEWS[sim.preview] || PREVIEWS.wave, visible: true });
+});
+
+const liveN = SIMULATIONS.filter(s => s.status === 'live').length;
+$('#liveCount').textContent = `${liveN} live · ${SIMULATIONS.length - liveN} planned`;
+$('#chCount').textContent = liveN;
+
+/* ---------- search + tag filter ---------- */
+const allTags = [...new Set(SIMULATIONS.flatMap(s => s.tags || []))].sort();
+let activeTag = null;
+['all', ...allTags].forEach(tag => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'chip' + (tag === 'all' ? ' on' : ''); b.textContent = tag === 'all' ? 'all' : '#' + tag;
+  b.addEventListener('click', () => {
+    activeTag = tag === 'all' ? null : tag;
+    document.querySelectorAll('.chip').forEach(c => c.classList.toggle('on', c === b));
+    applyFilter();
+  });
+  $('#chips').appendChild(b);
+});
+function applyFilter() {
+  const q = $('#q').value.trim().toLowerCase();
+  let shown = 0;
+  for (const c of cards) {
+    const hay = [c.sim.title, c.sim.subtitle, c.sim.description, ...(c.sim.tags || [])].join(' ').toLowerCase();
+    const ok = (!q || hay.includes(q)) && (!activeTag || (c.sim.tags || []).includes(activeTag));
+    c.el.style.display = ok ? '' : 'none';
+    if (ok) shown++;
+  }
+  for (const g of ['#liveGrid', '#plannedGrid']) {
+    const grid = $(g), title = grid.previousElementSibling;
+    title.style.display = [...grid.children].some(e => e.style.display !== 'none') ? '' : 'none';
+  }
+  $('#empty').style.display = shown ? 'none' : 'block';
+}
+$('#q').addEventListener('input', applyFilter);
+
+/* =====================================================================
+ *  Hero oscilloscope
+ * ===================================================================== */
+const scope = $('#scope');
+let scopeMode = 'AM';
+const scopeLabels = { AM: 'CH1 · AM · 2 V/div', FM: 'CH1 · FM · 2 V/div', BPSK: 'CH1 · BPSK · 2 V/div', CHIRP: 'CH1 · LFM chirp · 2 V/div' };
+document.querySelectorAll('.modes button').forEach(b => b.addEventListener('click', () => {
+  scopeMode = b.dataset.mode;
+  document.querySelectorAll('.modes button').forEach(x => x.classList.toggle('on', x === b));
+  $('#scopeLabel').textContent = scopeLabels[scopeMode];
+}));
+
+function signal(x, t) {          // x in [0,1] across the screen
+  const fc = 22, fm = 2;
+  switch (scopeMode) {
+    case 'AM':  return (0.55 + 0.4 * Math.sin(TAU * (fm * x - t * .4))) * Math.sin(TAU * (fc * x - t * 2));
+    case 'FM':  return Math.sin(TAU * (fc * x - t * 2) + 6 * Math.sin(TAU * (fm * x - t * .4)));
+    case 'BPSK': {
+      const bits = [1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 0, 1];
+      const k = Math.floor((x * 6 + t * .6) % bits.length);
+      return (bits[(k + bits.length) % bits.length] ? 1 : -1) * Math.sin(TAU * (fc * x - t * 2));
+    }
+    case 'CHIRP': { const u = (x + t * .15) % 1; return Math.sin(TAU * (4 * u + 26 * u * u)) * Math.sin(Math.PI * u) ** .3; }
+  }
+}
+
+function drawScope(t) {
+  const { ctx, w, h } = fit(scope);
+  ctx.strokeStyle = 'rgba(52,211,153,.10)'; ctx.lineWidth = 1; ctx.beginPath();
+  for (let i = 1; i < 10; i++) { const x = i * w / 10; ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, h); }
+  for (let i = 1; i < 6; i++) { const y = i * h / 6; ctx.moveTo(0, y + .5); ctx.lineTo(w, y + .5); }
+  ctx.stroke();
+  ctx.strokeStyle = 'rgba(52,211,153,.25)'; ctx.beginPath(); ctx.moveTo(0, h / 2 + .5); ctx.lineTo(w, h / 2 + .5); ctx.stroke();
+  // glow pass + sharp pass
+  for (const [lw, col] of [[6, 'rgba(52,211,153,.18)'], [1.6, '#6ee7b7']]) {
+    ctx.strokeStyle = col; ctx.lineWidth = lw; ctx.beginPath();
+    for (let px = 0; px <= w; px += 1.5) {
+      const y = h / 2 - signal(px / w, t) * h * .36;
+      px ? ctx.lineTo(px, y) : ctx.moveTo(px, y);
+    }
+    ctx.stroke();
+  }
+}
+
+/* =====================================================================
+ *  Background: slow concentric "transmitter" rings
+ * ===================================================================== */
+const rings = $('#rings');
+function drawRings(t) {
+  const { ctx, w, h } = fit(rings);
+  const sx = w * .92, sy = h * .08, maxR = Math.hypot(w, h);
+  for (let k = 0; k < 9; k++) {
+    const r = ((t * 40 + k * maxR / 9) % maxR);
+    ctx.strokeStyle = `rgba(56,189,248,${.07 * (1 - r / maxR)})`; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(sx, sy, r, 0, TAU); ctx.stroke();
+  }
+}
+
+/* =====================================================================
+ *  Helpers + main loop
+ * ===================================================================== */
+function fit(cv) {
+  const dpr = Math.min(devicePixelRatio || 1, 2), w = cv.clientWidth, h = cv.clientHeight;
+  const pw = Math.round(w * dpr), ph = Math.round(h * dpr);
+  if (cv.width !== pw || cv.height !== ph) { cv.width = pw; cv.height = ph; }
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); ctx.clearRect(0, 0, w, h);
+  return { ctx, w, h };
+}
+
+// only animate cards that are on screen
+const io = new IntersectionObserver(es => es.forEach(e => {
+  const c = cards.find(c => c.el === e.target); if (c) c.visible = e.isIntersecting;
+}));
+cards.forEach(c => io.observe(c.el));
+
+function tick(now) {
+  const t = now / 1000;
+  drawRings(t);
+  drawScope(t);
+  for (const c of cards) {
+    if (!c.visible || c.el.style.display === 'none') continue;
+    const { ctx, w, h } = fit(c.canvas);
+    c.draw(ctx, w, h, t);
+  }
+  if (!reduceMotion) requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+
+/* ---------- top-bar telemetry ---------- */
+function telemetry() {
+  const d = new Date();
+  $('#clock').textContent = d.toISOString().slice(11, 19);
+  $('#snr').textContent = (24 + 3 * Math.sin(d / 3000) + Math.random()).toFixed(1) + ' dB';
+}
+telemetry(); setInterval(telemetry, 1000);
+</script>
+</body>
+</html>

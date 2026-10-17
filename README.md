@@ -1,9 +1,15 @@
 # Signals simulations
 
-Interactive, single-file simulations for learning signal-processing and radio concepts.
-Every top-level folder with an `index.html` is published automatically with GitHub Pages
-(see `.github/workflows/pages.yml`).
+Interactive, single-file simulations for learning radio and signal-processing concepts.
 
-| Demo | Live page |
+Open `index.html` – the hub page – to browse them. It works straight from disk or when deployed
+(Netlify via `netlify.toml`, or GitHub Pages via `.github/workflows/pages.yml`).
+
+## Adding a simulation
+
+1. Create a folder with an `index.html` (link back with `<a href="../index.html">`).
+2. Add an entry to the `SIMULATIONS` routing table near the top of the script in the root `index.html`.
+
+| Simulation | Folder |
 | --- | --- |
-| Beam steering with a 4-element phased array (`beam forming/`) | https://byniu5.github.io/Signals-simulations/beam-forming/ |
+| Beam steering with a 4-element phased array | `beam forming/` |
