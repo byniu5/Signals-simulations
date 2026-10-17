@@ -113,6 +113,12 @@ var WIFI_STANDARDS = {
     'keysight-89601': { title: 'Keysight 89601 VSA technical overview (802.11ax subcarrier spacing 78.125 kHz)', url: 'https://docs.alltest.net/manual/Alltest-Agilent-Keysight-89601EVMC-TechnicalOverview-30607-.pdf', kind: 'vendor', origin: 'Keysight' },
     'pat-vht-20': { title: 'US patent 10461978 (802.11ac 20 MHz: 52 data + 4 pilot subcarriers)', url: 'https://patents.google.com/patent/US10461978', kind: 'patent', origin: 'US 10461978' },
     'ibwave-11': { title: 'iBwave Wireless Standards 802.11 poster (802.11ac 80 MHz: 234 data, 8 pilot, 14 unused subcarriers)', url: 'https://www.ibwave.com/storage/app/media/pdf/posters/iBwave-Wireless-Standards-802.11.pdf', kind: 'vendor', origin: 'iBwave' },
+    'pat-scrambler-init': { title: 'US patent 12581474 (scrambler x^7 + x^4 + 1, seven shift registers; 7-bit scrambler initialization in the SERVICE field; all-ones state gives 00001110 11110010 11001001 …)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12581474', kind: 'patent', origin: 'US 12581474' },
+    'arxiv-1212-4991': { title: 'arXiv 1212.4991, PHY-layer key distribution for 802.11g: scrambler LFSR G(x) = x^7 + x^4 + 1, period 127; first 7 SERVICE bits are zero so the receiver recovers the seed', url: 'https://arxiv.org/pdf/1212.4991', kind: 'paper', origin: 'arXiv 1212.4991' },
+    'inet-ofdm': { title: 'INET framework for OMNeT++ (open source), bit-level 802.11 OFDM: Ieee80211ConvolutionalCode.cc (133/171, K = 7, puncturing matrices), Ieee80211OfdmInterleaver.cc (Clause 17 permutations), Qam16Modulation.cc', url: 'https://github.com/inet-framework/inet/tree/master/src/inet/physicallayer/wireless/ieee80211/bitlevel', kind: 'code', origin: 'INET framework' },
+    'ubc-elex7860': { title: 'UBC ELEX 7860 course solution quoting 802.11a: rate-1/2 convolutional code, K = 7, g0 = 133 and g1 = 171 (octal), punctured to 2/3 and 3/4', url: 'https://people.ece.ubc.ca/~edc/7860.jan2022/midterm1sol.pdf', kind: 'course', origin: 'UBC course' },
+    'pat-interleaver-11a': { title: 'US patents 6934901 / RE44848 (802.11a block interleaver: 16 columns, two permutations, s = max(N_BPSC/2, 1))', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/6934901', kind: 'patent', origin: 'US 6934901' },
+    'pat-he-interleaver': { title: 'US patent 10110406 (HE BCC interleaver parameters per RU size; a search summary quotes N_COL 13 / N_ROW 9 for the 242-tone RU — conflicts with the plan value)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10110406', kind: 'patent', origin: 'US 10110406' },
     'tub-ofdm': { title: 'TU Berlin telecom exercises (802.11ac non-null subcarriers: 56/64, 114/128, 242/256, 484/512)', url: 'https://platform.commit.tu-berlin.de/en/book/telecom/chapter/ch25/section/exercises', kind: 'course', origin: 'TU Berlin' },
   },
 
@@ -631,6 +637,55 @@ var WIFI_STANDARDS = {
   },
 
   /* ---------------------------------------------------------------------------
+   *  Bit-level processing of the Data field on the BCC path (transmitter →
+   *  receiver chain): scrambler, convolutional encoder, puncturing, interleaver,
+   *  constellation mapping. One spatial stream, 20 MHz.
+   * ------------------------------------------------------------------------- */
+  bitLevel: {
+    scrambler: {
+      value: { polynomialExponents: [7, 4, 0], stateBits: 7, initBitsInService: 7 },
+      status: 'supported', evidence: ['pat-scrambler-init', 'arxiv-1212-4991', 'plan'],
+      note: 'Frame-synchronous scrambler S(x) = x^7 + x^4 + 1 (period 127). The first 7 SERVICE bits are zero before scrambling, so the receiver reads the scrambler state straight from them.',
+    },
+    tailZeroedAfterScrambling: {
+      value: true, status: 'unverified', evidence: ['plan'],
+      note: 'The 6 tail bits are set back to zero after scrambling so that the encoder ends in the all-zero state.',
+    },
+    convolutionalCode: {
+      value: { constraintLength: 7, generatorsOctal: ['133', '171'] },
+      status: 'supported', evidence: ['inet-ofdm', 'ubc-elex7860', 'plan'],
+      note: 'Rate-1/2 mother code: output A from g0 = 133 (octal), output B from g1 = 171 (octal).',
+    },
+    puncturing: {
+      value: { '1/2': [[1], [1]], '2/3': [[1, 1], [1, 0]], '3/4': [[1, 1, 0], [1, 0, 1]], '5/6': [[1, 1, 0, 1, 0], [1, 0, 1, 0, 1]] },
+      status: 'unverified', evidence: ['inet-ofdm', 'plan'],
+      note: 'Rows: output A and output B; 1 = sent, 0 = removed (stolen). One open-source origin only.',
+    },
+    interleaverRule: {
+      value: ['i = N_ROW·(k mod N_COL) + floor(k / N_COL)', 'j = s·floor(i / s) + (i + N_CBPS − floor(N_COL·i / N_CBPS)) mod s,  s = max(N_BPSCS / 2, 1)'],
+      status: 'supported', evidence: ['inet-ofdm', 'pat-interleaver-11a', 'plan'],
+      note: 'Both sources state the Clause 17 form (N_COL = 16, N_ROW = N_CBPS / 16). Later PHYs reuse the two permutations with other array sizes (one stream: no frequency rotation).',
+    },
+    interleaverColumnsNonHT: { value: 16, status: 'supported', evidence: ['inet-ofdm', 'pat-interleaver-11a', 'plan'] },
+    interleaverSize20MHz: {
+      value: { HT: { columns: 13, rowsPerBpscs: 4 }, VHT: { columns: 13, rowsPerBpscs: 4 }, HE: { columns: 26, rowsPerBpscs: 9 } },
+      status: 'unverified', evidence: ['plan'],
+      note: 'One spatial stream, 20 MHz (52 / 52 / 234 data subcarriers = columns × rows / N_BPSCS). Plan values only; for the 242-tone RU a patent summary (pat-he-interleaver) gives different numbers.',
+    },
+    grayMapping: {
+      value: 'I from the first half of each N_BPSCS bit group, Q from the second half (BPSK: I only). On each axis the first bit is the sign (0 → negative) and the level index is the inverse binary-reflected Gray code of the bits.',
+      status: 'unverified', evidence: ['inet-ofdm', 'plan'],
+      note: 'Matches the INET 16-QAM table; one origin.',
+    },
+    meanEnergy: {
+      value: { 'BPSK': 1, 'QPSK': 2, '16-QAM': 10, '64-QAM': 42, '256-QAM': 170, '1024-QAM': 682 },
+      status: 'derived', evidence: ['arith', 'plan'],
+      derivedFrom: ['definition: square M-QAM with levels ±1, ±3, … has mean energy 2(M − 1)/3; BPSK ±1 has 1'],
+      note: 'K_MOD = 1 / sqrt(mean energy) normalizes every constellation to unit average power.',
+    },
+  },
+
+  /* ---------------------------------------------------------------------------
    *  Interframe timing (per band)
    * ------------------------------------------------------------------------- */
   interframe: {
@@ -762,6 +817,22 @@ var WIFI_STANDARDS = {
       definition: 'In wider channels the pre-HT fields are sent once per 20 MHz subchannel; each copy is multiplied by its own factor (1 and j at 40 MHz; 1, −1, −1, −1 at 80 MHz) to keep the peak-to-average power ratio low.' },
     'Spatial stream': { doc: 'c19', definition: 'One of N_SS independent data streams sent simultaneously over several antennas on the same subcarriers (MIMO spatial multiplexing).' },
     'MCS': { expansion: 'modulation and coding scheme', doc: 'c19', definition: 'Index for a combination of modulation and coding rate (HT and later: HT 0–7 per stream, VHT 0–9, HE 0–11). Non-HT has no MCS — it signals a data rate in RATE.' },
+
+    /* ---- transmitter → receiver chain ---- */
+    'Scrambler': { doc: 'c17', definition: 'XORs the data bits with a pseudo-random sequence from a 7-bit shift register (S(x) = x^7 + x^4 + 1) so that long runs of 0s or 1s do not produce spectral lines. Its starting state is random; the receiver learns it from the first 7 SERVICE bits, which are zero before scrambling.' },
+    'Convolutional encoder': { doc: 'c17', definition: 'The BCC encoder: a 6-bit memory plus the new bit (constraint length 7). For every input bit it outputs two bits, A and B, each the XOR of the taps of one generator polynomial (133 and 171 in octal). Each output depends on the last 7 input bits, which is what lets the decoder correct errors.' },
+    'Puncturing': { doc: 'c17', definition: 'Removing some of the encoder\'s output bits in a fixed pattern to raise the coding rate from 1/2 to 2/3, 3/4 or 5/6. The receiver puts "unknown" (erasures) back in their places before decoding.' },
+    'Interleaver': { doc: 'c17', definition: 'Reorders the coded bits of each OFDM symbol: adjacent coded bits go to subcarriers far apart (first permutation) and alternate between more and less reliable bits of the constellation (second permutation). A fade that wipes out neighbouring subcarriers then causes scattered errors, which the decoder can correct, instead of a burst it cannot.' },
+    'Viterbi decoder': { doc: 'c17', definition: 'The usual decoder for the BCC: it tracks all 64 encoder states through a trellis and keeps, for each state, the most likely path so far. At the end it follows the best path back and outputs the bits that most likely produced what was received.' },
+    'Channel estimation': { doc: 'c17', definition: 'The receiver divides what it received on each subcarrier during a training field by the known transmitted value. The result is one complex gain per subcarrier — the CSI — later used by the equalizer.' },
+    'Equalizer': { doc: 'c17', definition: 'Divides each received data subcarrier by its estimated channel gain, undoing the attenuation and phase shift of the channel. Thanks to the cyclic prefix one complex division per subcarrier is enough.' },
+    'Carrier frequency offset': { expansion: 'CFO', doc: 'c17', definition: 'The difference between the transmitter\'s and the receiver\'s carrier frequencies. It makes the received constellation rotate from symbol to symbol and, if large, leaks energy between subcarriers. Estimated from repeated training symbols; what remains is tracked with the pilots.' },
+    'Multipath': { doc: 'c17', definition: 'The signal arrives over several paths (direct, reflections) with different delays. Within one OFDM symbol this makes some subcarriers stronger and some weaker (frequency-selective fading); echoes longer than the guard interval also smear one symbol into the next.' },
+    'SNR': { expansion: 'signal-to-noise ratio', doc: 'c17', definition: 'Average signal power divided by noise power, in dB. Denser constellations need a higher SNR because their points are closer together.' },
+    'EVM': { expansion: 'error vector magnitude', doc: 'c17', definition: 'RMS distance between the received (equalized) constellation points and the ideal points, relative to the average point power — the standard measure of modulation accuracy.' },
+    'Demapper': { doc: 'c17', definition: 'The inverse of constellation mapping: turns each equalized point back into N_BPSCS bits (here: the bits of the nearest constellation point, a hard decision).' },
+    'SIFS': { expansion: 'short interframe space', doc: 'c17', definition: 'The gap between the end of a received PPDU and the start of the response (e.g. an ACK): 16 µs at 5 GHz, 10 µs (+ 6 µs signal extension) at 2.4 GHz. Within it the receiver must finish decoding, check the frame and switch to transmit — the reason the lower PHY usually sits in dedicated hardware.' },
+    'ACK': { expansion: 'Acknowledgment frame', doc: 'c17', definition: 'The short control frame a receiver sends one SIFS after a correctly received frame. If it does not arrive in time, the sender retransmits.' },
 
     /* ---- HE (802.11ax) ---- */
     'HE SU PPDU': { expansion: 'HE single-user PPDU', doc: 'c27',

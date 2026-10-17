@@ -25,10 +25,13 @@
     });
   }
 
+  /* State shared by the three modes (the core remounts a mode on every tab switch). */
+  const shared = { cfg: { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', payload: 1500 }, level: 'subcarriers' };
+
   function mountPpdu(container) {
     const state = {
-      cfg: { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', payload: 1500 },
-      level: 'subcarriers', symbolIndex: 1, field: 'data', selected: null,
+      cfg: C.normalize(shared.cfg).cfg,
+      level: shared.level, symbolIndex: 1, field: 'data', selected: null,
       ru: null, // RU size of the HE MU / TB overlay on the subcarrier map (null = off)
     };
     let a = C.analyze(state.cfg);
@@ -60,10 +63,10 @@
       if (to < from) {
         const anchor = stage.view && stage.view.querySelector(anchorIn(state.level));
         const rect = fromRect || (anchor && anchor.getBoundingClientRect());
-        state.level = level;
+        state.level = shared.level = level;
         stage.zoomIn(renderer(level), rect);
       } else {
-        state.level = level;
+        state.level = shared.level = level;
         stage.zoomOut(renderer(level), anchorIn(level)); // shrink into where the inner view sits
       }
       drawCrumbs();
@@ -102,6 +105,7 @@
         cfg = C.normalize(Object.assign({}, cfg, { mcs: fallback.mcs, mod: null, R: null })).cfg;
       }
       state.cfg = cfg;
+      shared.cfg = cfg;
       redraw();
     }
     function select(labelNode, value, options, onchange, disabled) {
@@ -171,8 +175,8 @@
     glossary,
     modes: [
       { id: 'ppdu', label: 'PPDU view', mount: mountPpdu },
-      { id: 'chain', label: 'Transmitter → receiver', disabled: 'Transmitter → receiver chain: milestone (e)', disabledShort: '(e)' },
-      { id: 'compare', label: 'Generations compared', disabled: 'Comparison across generations: milestone (e)', disabledShort: '(e)' },
+      { id: 'chain', label: 'Transmitter → receiver', mount: (el, ctx) => V.mountChain(el, ctx, shared) },
+      { id: 'compare', label: 'Generations compared', mount: (el, ctx) => V.mountCompare(el, ctx, shared) },
     ],
   });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

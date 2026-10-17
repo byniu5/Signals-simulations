@@ -9,9 +9,9 @@ user; *supported* — at least two independent public sources, standard text not
 checked values; *unverified* — everything else. Sources are counted by their `origin` (several ns-3 files are one
 origin); `plan` and `arith` are cross-checks and never count as sources. The unit tests enforce these rules.
 
-- Status-bearing entries: **130** — unverified **31** · standard-checked **0** · supported **69** · derived **30**
+- Status-bearing entries: **139** — unverified **35** · standard-checked **0** · supported **73** · derived **31**
 
-## Unverified — please check against the standard (31)
+## Unverified — please check against the standard (35)
 
 Fewer than two independent public sources, or an input of a derivation is unverified. Shown as a warning in the app.
 
@@ -40,6 +40,10 @@ Fewer than two independent public sources, or an input of a derivation is unveri
 | `lsig.nonHtLength` | PSDU length in octets | review-2, plan, mw-lsig | MathWorks + reviewer statement only (one public origin). |
 | `ldpc.codewordTable` | [{"maxAvbits":648,"N_CW":1,"L_long":1296,"L_short":648,"threshold":912},{"maxAvbits":12… | plan | Row i applies when N_avbits <= maxAvbits. L_long is used if N_avbits >= N_pld + threshold·(1 − R). Last row: N_CW = ceil(N_pld / (1944·R)). Codeword lengths 648/1296/1944 confirmed by patents; thresholds not found. |
 | `ldpc.extraSymbolCondition` | {"puncturedFraction":0.1,"shorteningFactor":1.2} | pat-ldpc-extra, plan | Extra symbol (HT) / LDPC extra symbol segment (HE) if N_punc > 0.1·N_CW·L_LDPC·(1 − R) AND N_shrt < 1.2·N_punc·R/(1 − R). The patent uses this form for a longer-codeword variant. |
+| `bitLevel.tailZeroedAfterScrambling` | true | plan | The 6 tail bits are set back to zero after scrambling so that the encoder ends in the all-zero state. |
+| `bitLevel.puncturing` | {"1/2":[[1],[1]],"2/3":[[1,1],[1,0]],"3/4":[[1,1,0],[1,0,1]],"5/6":[[1,1,0,1,0],[1,0,1,… | inet-ofdm, plan | Rows: output A and output B; 1 = sent, 0 = removed (stolen). One open-source origin only. |
+| `bitLevel.interleaverSize20MHz` | {"HT":{"columns":13,"rowsPerBpscs":4},"VHT":{"columns":13,"rowsPerBpscs":4},"HE":{"colu… | plan | One spatial stream, 20 MHz (52 / 52 / 234 data subcarriers = columns × rows / N_BPSCS). Plan values only; for the 242-tone RU a patent summary (pat-he-interleaver) gives different numbers. |
+| `bitLevel.grayMapping` | I from the first half of each N_BPSCS bit group, Q from the second half (BPSK: I only).… | inet-ofdm, plan | Matches the INET 16-QAM table; one origin. |
 | `interframe.bands.5.SIFS` | 16 µs | wiki-sifs, wiki-difs, plan |  |
 | `interframe.bands.5.aSlotTime` | {"short":9} µs | wiki-difs, plan |  |
 | `interframe.bands.6.SIFS` | 16 µs | wiki-sifs, wiki-difs, plan | assumed same as 5 GHz |
@@ -55,7 +59,7 @@ Read in the standard text by the user.
 
 _None._
 
-## Supported (secondary sources) (69)
+## Supported (secondary sources) (73)
 
 At least two independent public sources (open-source implementation, IEEE submission, patent, vendor documentation), or classified as supported by the reviewer (source `review-3`). The standard text itself was not read.
 
@@ -126,12 +130,16 @@ At least two independent public sources (open-source implementation, IEEE submis
 | `lsig.spoofRule` | {"legacyPreamble":20,"symbol":4,"octetsPerSymbol":3,"subtract":3} | review-2, ieee-13-1002, pat-lsig-length, warp-ref, review-3 | LENGTH = ceil((TXTIME − SignalExtension − 20) / 4) · 3 − 3 for HT and VHT; HE subtracts a further m (lsig.heM). The patent writes 3 as RATE/8·4 with RATE = 6 Mb/s. |
 | `lsig.heM` | {"HE SU PPDU":2,"HE TB PPDU":2,"HE MU PPDU":1,"HE ER SU PPDU":1} | ieee-17-0398, pat-he-mod3, pat-lsig-length | HE PPDUs subtract m: LENGTH mod 3 = 1 marks HE SU / HE TB, LENGTH mod 3 = 2 marks HE MU / HE ER SU (mod 3 = 0: not HE). |
 | `ldpc.shorteningPuncturing` | ["N_shrt = max(0, N_CW·L_LDPC·R − N_pld)","N_punc = max(0, N_CW·L_LDPC − N_avbits − N_s… | arxiv-ldpc, plan, pat-ldpc-extra |  |
+| `bitLevel.scrambler` | {"polynomialExponents":[7,4,0],"stateBits":7,"initBitsInService":7} | pat-scrambler-init, arxiv-1212-4991, plan | Frame-synchronous scrambler S(x) = x^7 + x^4 + 1 (period 127). The first 7 SERVICE bits are zero before scrambling, so the receiver reads the scrambler state straight from them. |
+| `bitLevel.convolutionalCode` | {"constraintLength":7,"generatorsOctal":["133","171"]} | inet-ofdm, ubc-elex7860, plan | Rate-1/2 mother code: output A from g0 = 133 (octal), output B from g1 = 171 (octal). |
+| `bitLevel.interleaverRule` | ["i = N_ROW·(k mod N_COL) + floor(k / N_COL)","j = s·floor(i / s) + (i + N_CBPS − floor… | inet-ofdm, pat-interleaver-11a, plan | Both sources state the Clause 17 form (N_COL = 16, N_ROW = N_CBPS / 16). Later PHYs reuse the two permutations with other array sizes (one stream: no frequency rotation). |
+| `bitLevel.interleaverColumnsNonHT` | 16 | inet-ofdm, pat-interleaver-11a, plan |  |
 | `interframe.signalExtension` | {"5":0,"6":0,"2.4":6} µs | ns3-ofdm, ns3-txdur, plan, pat-lsig-length | OFDM PPDUs in the 2.4 GHz band end with a 6 µs signal extension (no transmission) so that the receiver has time to finish decoding before SIFS. |
 | `generations.VHT.exclusions[20 MHz, MCS 9, NSS 1/2/4]` | excluded | ieee-11-0577, ns3-vht, review-3 | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
 | `generations.VHT.exclusions[80 MHz, MCS 6, NSS 3]` | excluded | ieee-11-0577, ns3-vht, review-3 | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
 | `generations.VHT.exclusions[160 MHz, MCS 9, NSS 3]` | excluded | ieee-11-0577, ns3-vht, review-3 | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
 
-## Derived (30)
+## Derived (31)
 
 Arithmetic from standard-checked, supported or derived values; the inputs are listed.
 
@@ -167,6 +175,7 @@ Arithmetic from standard-checked, supported or derived values; the inputs are li
 | `generations.HE.dataField.N_tail` | 0 bit | pat-padding, plan, arith | LDPC has no tail bits (N_tail = 6·N_ES only for BCC). From: `definition: LDPC is a block code; tail bits only terminate a convolutional (BCC) code`. |
 | `lsig.maxLength` | 4095 octet | ieee-13-1002, mw-duration, plan, arith, review-3 | 2^12 − 1 (12-bit LENGTH) From: `generations.nonHT.lsigBits`. |
 | `lsig.maxPpdu` | 5484 µs | ieee-13-1002, mw-duration, arith, review-3 | (4095 + 3) / 3 · 4 + 20 = 5484 µs: the longest duration an L-SIG LENGTH can announce. Checked for every generation (excluding the signal extension); the longest Non-HT PPDU, 4095 octets at 6 Mb/s, takes exactly 5484 µs. From: `lsig.spoofRule`, `lsig.maxLength`. |
+| `bitLevel.meanEnergy` | {"BPSK":1,"QPSK":2,"16-QAM":10,"64-QAM":42,"256-QAM":170,"1024-QAM":682} | arith, plan | K_MOD = 1 / sqrt(mean energy) normalizes every constellation to unit average power. From: `definition: square M-QAM with levels ±1, ±3, … has mean energy 2(M − 1)/3; BPSK ±1 has 1`. |
 
 ## Check table — status of the published reference values
 
@@ -256,4 +265,10 @@ Arithmetic from standard-checked, supported or derived values; the inputs are li
 - **keysight-89601** (Keysight) — [Keysight 89601 VSA technical overview (802.11ax subcarrier spacing 78.125 kHz)](https://docs.alltest.net/manual/Alltest-Agilent-Keysight-89601EVMC-TechnicalOverview-30607-.pdf)
 - **pat-vht-20** (US 10461978) — [US patent 10461978 (802.11ac 20 MHz: 52 data + 4 pilot subcarriers)](https://patents.google.com/patent/US10461978)
 - **ibwave-11** (iBwave) — [iBwave Wireless Standards 802.11 poster (802.11ac 80 MHz: 234 data, 8 pilot, 14 unused subcarriers)](https://www.ibwave.com/storage/app/media/pdf/posters/iBwave-Wireless-Standards-802.11.pdf)
+- **pat-scrambler-init** (US 12581474) — [US patent 12581474 (scrambler x^7 + x^4 + 1, seven shift registers; 7-bit scrambler initialization in the SERVICE field; all-ones state gives 00001110 11110010 11001001 …)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12581474)
+- **arxiv-1212-4991** (arXiv 1212.4991) — [arXiv 1212.4991, PHY-layer key distribution for 802.11g: scrambler LFSR G(x) = x^7 + x^4 + 1, period 127; first 7 SERVICE bits are zero so the receiver recovers the seed](https://arxiv.org/pdf/1212.4991)
+- **inet-ofdm** (INET framework) — [INET framework for OMNeT++ (open source), bit-level 802.11 OFDM: Ieee80211ConvolutionalCode.cc (133/171, K = 7, puncturing matrices), Ieee80211OfdmInterleaver.cc (Clause 17 permutations), Qam16Modulation.cc](https://github.com/inet-framework/inet/tree/master/src/inet/physicallayer/wireless/ieee80211/bitlevel)
+- **ubc-elex7860** (UBC course) — [UBC ELEX 7860 course solution quoting 802.11a: rate-1/2 convolutional code, K = 7, g0 = 133 and g1 = 171 (octal), punctured to 2/3 and 3/4](https://people.ece.ubc.ca/~edc/7860.jan2022/midterm1sol.pdf)
+- **pat-interleaver-11a** (US 6934901) — [US patents 6934901 / RE44848 (802.11a block interleaver: 16 columns, two permutations, s = max(N_BPSC/2, 1))](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/6934901)
+- **pat-he-interleaver** (US 10110406) — [US patent 10110406 (HE BCC interleaver parameters per RU size; a search summary quotes N_COL 13 / N_ROW 9 for the 242-tone RU — conflicts with the plan value)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10110406)
 - **tub-ofdm** (TU Berlin) — [TU Berlin telecom exercises (802.11ac non-null subcarriers: 56/64, 114/128, 242/256, 484/512)](https://platform.commit.tu-berlin.de/en/book/telecom/chapter/ch25/section/exercises)

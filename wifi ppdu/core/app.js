@@ -25,12 +25,14 @@
       root.Glossary.mount(document.getElementById('glossary'), glossary, sys.glossaryTitle || 'Glossary');
 
       const enabled = sys.modes.filter((m) => !m.disabled);
+      // handed to every mode so it can switch to another mode of the same system
+      const ctx = { selectMode: (id) => { const m = enabled.find((x) => x.id === id); if (m) select(m); } };
       let active = sys.modes.find((m) => m.id === params.get('mode') && !m.disabled) || enabled[0];
       function select(mode) {
         active = mode;
         tabs.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.mode === mode.id)));
         main.replaceChildren();
-        mode.mount(main);
+        mode.mount(main, ctx);
       }
       tabs.replaceChildren(...sys.modes.map((m) => h('button', {
         type: 'button', role: 'tab', 'data-mode': m.id, disabled: !!m.disabled,

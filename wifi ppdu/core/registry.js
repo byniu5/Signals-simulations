@@ -4,6 +4,7 @@
  *   { id, title, subtitle,
  *     glossary(): [{ id, label, expansion, alias, definition, ref, note }],
  *     modes: [{ id, label, mount(container, ctx) } | { id, label, disabled: 'reason' }] }
+ * ctx = { selectMode(id) } lets a mode switch to another mode of the same system.
  * The core never imports system code directly, so adding a system means adding a
  * folder and one <script> tag — nothing in the existing systems changes.
  */
