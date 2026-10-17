@@ -125,11 +125,33 @@ test('Non-HT, HT and VHT N_DBPS are integers for every allowed combination', () 
 /* ------------------------------------------------------------------------- *
  *  VHT exclusions
  * ------------------------------------------------------------------------- */
-test('VHT 20 MHz MCS 9 is excluded except for 3 (and 6) spatial streams', () => {
-  const ex = (nss) => C.exclusion({ gen: 'VHT', bw: 20, mcs: 9, nss });
-  assert.equal(ex(1).status, 'verified');
-  assert.ok(ex(2) && ex(4));
-  assert.equal(ex(3), null);
+test('VHT exclusions for N_SS 1-4 are exactly 20 MHz MCS 9 (N_SS 1,2,4), 80 MHz MCS 6 (N_SS 3), 160 MHz MCS 9 (N_SS 3)', () => {
+  const listed = [];
+  for (const bw of [20, 40, 80, 160]) for (let mcs = 0; mcs <= 9; mcs++) for (const nss of [1, 2, 3, 4]) {
+    const x = C.exclusion({ gen: 'VHT', bw, mcs, nss });
+    if (x) {
+      listed.push(`${bw}/${mcs}/${nss}`);
+      assert.equal(x.status, 'unverified');
+      assert.match(x.note, /11-11\/0577r0.*N_ES rule.*standard table not read/);
+    }
+  }
+  assert.deepEqual(listed, ['20/9/1', '20/9/2', '20/9/4', '80/6/3', '160/9/3']);
+});
+
+test('N_ES: VHT = ceil(N_DBPS / 2160) with overrides; HT = 2 when N_DBPS > 1080', () => {
+  const nes = (cfg) => C.symbolParams(C.normalize(cfg).cfg).N_ES;
+  assert.equal(nes({ gen: 'VHT', bw: 80, gi: 0.8, nss: 1, mcs: 9 }), 1);      // N_DBPS 1560
+  assert.equal(nes({ gen: 'VHT', bw: 160, gi: 0.8, nss: 2, mcs: 9 }), 3);     // N_DBPS 6240 -> ceil(2.89)
+  assert.equal(nes({ gen: 'VHT', bw: 160, gi: 0.8, nss: 4, mcs: 7 }), 6);     // override (rule would give 5)
+  assert.equal(nes({ gen: 'HT', bw: 40, gi: 0.8, nss: 2, mcs: 7 }), 1);       // N_DBPS 1080
+  assert.equal(nes({ gen: 'HT', bw: 40, gi: 0.8, nss: 3, mcs: 5 }), 2);       // N_DBPS 1296
+  // the N_DBPS rule equals ns-3's rate rule (540 / 600 Mb/s per encoder) for every VHT combination
+  for (const bw of [20, 40, 80, 160]) for (const gi of [0.8, 0.4]) for (const nss of [1, 2, 3, 4]) for (let mcs = 0; mcs <= 9; mcs++) {
+    const { cfg } = C.normalize({ gen: 'VHT', bw, gi, nss, mcs });
+    const p = C.symbolParams(cfg);
+    if (D.generations.VHT.encoders.value.exceptions.some((e) => e.bw === bw && e.nss === nss && e.mcs === mcs)) continue;
+    assert.equal(p.N_ES, Math.max(1, Math.ceil(p.rateMbps / (gi === 0.8 ? 540 : 600) - 1e-9)), JSON.stringify(cfg));
+  }
 });
 
 test('VHT exclusions coincide with BCC encoder-parser integrality (cross-check of the unverified entries)', () => {
@@ -279,8 +301,9 @@ test('airtime of every HE configuration is labelled as depending on the unverifi
   assert.ok(a.unverified.airtime.includes('ldpc.codewordTable') && a.unverified.airtime.includes('ldpc.extraSymbolCondition'));
   const b = C.analyze({ gen: 'nonHT', band: '5', mod: '64-QAM', R: '3/4', payload: 1500 });
   assert.deepEqual(b.unverified, { rate: [], airtime: [], ldpcDependent: false });
-  const v = C.analyze({ gen: 'VHT', bw: 80, gi: 0.8, mcs: 9, payload: 1500 });
-  assert.ok(!v.unverified.rate.includes('generations.VHT.encoders') && v.unverified.airtime.includes('generations.VHT.encoders'));
+  const h = C.analyze({ gen: 'HT', bw: 40, gi: 0.8, nss: 3, mcs: 5, payload: 1500 });
+  assert.ok(!h.unverified.rate.includes('generations.HT.encoders') && h.unverified.airtime.includes('generations.HT.encoders'),
+    'N_ES affects N_SYM, not the rate');
 });
 
 /* ------------------------------------------------------------------------- *
@@ -336,6 +359,43 @@ test('normalize() keeps configurations inside what each generation allows', () =
   assert.equal(C.normalize({ gen: 'HT', mod: '256-QAM', R: '5/6' }).cfg.mod, 'BPSK');
   assert.equal(C.normalize({ gen: 'HT', mcs: 7, nss: 2 }).cfg.mcs, 7);
   assert.equal(C.displayMcs(C.normalize({ gen: 'HT', mcs: 7, nss: 2 }).cfg), 15);
+});
+
+/* ------------------------------------------------------------------------- *
+ *  L-SIG LENGTH and the maximum PPDU duration
+ * ------------------------------------------------------------------------- */
+test('L-SIG LENGTH: PSDU length in Non-HT; ceil((TXTIME − 20)/4)·3 − 3 in HT/VHT/HE', () => {
+  const n = C.analyze({ gen: 'nonHT', band: '5', mod: '64-QAM', R: '3/4', payload: 1536 });
+  assert.equal(n.lsig.LENGTH, 1536);
+  const h = C.analyze({ gen: 'HT', band: '5', bw: 20, gi: 0.8, nss: 1, mcs: 7, payload: 1536 });
+  assert.equal(us(h.timeline.txtime_ns), 228);
+  assert.equal(h.lsig.LENGTH, ((228 - 20) / 4) * 3 - 3); // 153
+  const h24 = C.analyze({ gen: 'HT', band: '2.4', bw: 20, gi: 0.8, nss: 1, mcs: 7, payload: 1536 });
+  assert.equal(h24.lsig.LENGTH, 153, 'signal extension excluded');
+  // a legacy receiver turns LENGTH back into a duration that covers the PPDU
+  for (const cfg of [{ gen: 'VHT', bw: 80, gi: 0.4, mcs: 9, payload: 3000 }, { gen: 'HE', bw: 40, gi: 1.6, ltf: '2x', mcs: 5, payload: 777 }]) {
+    const a = C.analyze(cfg);
+    const legacyUs = 20 + ((a.lsig.LENGTH + 3) / 3) * 4;
+    assert.ok(legacyUs >= us(a.timeline.txtime_ns) && legacyUs - us(a.timeline.txtime_ns) < 4, JSON.stringify(cfg));
+  }
+});
+
+test('maximum PPDU duration: 5484 µs corresponds to L-SIG LENGTH 4095', () => {
+  const max = D.lsig.maxPpdu.value, r = D.lsig.spoofRule.value;
+  assert.equal(Math.ceil((max - r.legacyPreamble) / r.symbol) * r.octetsPerSymbol - r.subtract, D.lsig.maxLength.value);
+  const long = C.analyze({ gen: 'HT', bw: 20, gi: 0.8, nss: 1, mcs: 0, payload: 65535 });
+  assert.equal(long.maxPpdu.exceeded, true);
+  assert.equal(long.lsig.valid, false);
+  const ok = C.analyze({ gen: 'VHT', bw: 80, gi: 0.8, mcs: 9, payload: 4000 });
+  assert.equal(ok.maxPpdu.exceeded, false);
+});
+
+test('N_SD,short is looked up from the table by RU size, never derived', () => {
+  assert.deepEqual(D.generations.HE.dataField.N_SD_short.value, { 26: 6, 52: 12, 106: 24, 242: 60, 484: 120, 996: 240, 1992: 492 });
+  for (const [bw, ru] of [[20, 242], [40, 484], [80, 996], [160, 1992]]) {
+    const a = C.analyze({ gen: 'HE', bw, gi: 0.8, ltf: '2x', mcs: 0, payload: 500 });
+    assert.equal(a.symbols.N_SD_short, D.generations.HE.dataField.N_SD_short.value[ru]);
+  }
 });
 
 /* ------------------------------------------------------------------------- *

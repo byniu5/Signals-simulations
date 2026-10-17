@@ -3,8 +3,9 @@
 Interactive visualisation of how an IEEE 802.11 PPDU is built in frequency and time
 (802.11a/g Non-HT, 802.11n HT, 802.11ac VHT, 802.11ax HE). Everything runs client-side.
 
-**Status:** milestone (b) — 802.11a/g (Non-HT) views: subcarrier map, OFDM symbol, PPDU timeline, output panel,
-check table and glossary. HT/VHT/HE views and the transmitter → receiver chain follow in later milestones.
+**Status:** milestone (c) — 802.11a/g (Non-HT), 802.11n (HT-mixed) and 802.11ac (VHT SU) views: subcarrier map
+(Data field and pre-HT plans), OFDM symbol, PPDU timeline, output panel, check table and glossary. 802.11ax (HE) and
+the transmitter → receiver chain follow in later milestones.
 
 Open `index.html` (works straight from disk).
 
@@ -38,4 +39,5 @@ node "wifi ppdu/tools/verification-report.js"
 - **HE coding:** every HE configuration uses LDPC. The standard also allows BCC for MCS 0–9, N_SS ≤ 4 and RU ≤ 242 tones.
 - **No STBC:** m_STBC = 1 everywhere, and there are no extension LTFs.
 - **PPDU formats:** HT-mixed, VHT SU and HE SU only.
-- **VHT payload:** for VHT and HE the payload length is used as APEP_LENGTH.
+- **VHT payload:** APEP_LENGTH is used as the PSDU length (no MAC end-of-frame padding).
+- **Symbol view:** shows spatial stream 1; random constellation points; pilots drawn as +1 (the standard varies their sign).

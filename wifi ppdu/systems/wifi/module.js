@@ -10,7 +10,7 @@
   const C = root.WifiCalc, D = C.data, V = root.WifiViews;
 
   /* Generations with views in the current milestone; the others are listed but disabled. */
-  const AVAILABLE = { nonHT: true, HT: 'milestone (c)', VHT: 'milestone (c)', HE: 'milestone (d)' };
+  const AVAILABLE = { nonHT: true, HT: true, VHT: true, HE: 'milestone (d)' };
   /* Zoom levels, innermost first. */
   const LEVELS = ['subcarriers', 'symbol', 'ppdu'];
   const LEVEL_LABEL = { subcarriers: 'Subcarrier map', symbol: 'OFDM symbol', ppdu: 'PPDU' };
@@ -87,8 +87,19 @@
     }
 
     /* ---------- controls ---------- */
+    let adjustNote = null;
     function setCfg(patch) {
-      state.cfg = C.normalize(Object.assign({}, state.cfg, patch)).cfg;
+      let cfg = C.normalize(Object.assign({}, state.cfg, patch)).cfg;
+      adjustNote = null;
+      // combinations the MCS tables do not define (VHT): step down to the nearest defined MCS
+      const ex = C.exclusion(cfg);
+      if (ex) {
+        const allowed = C.options(cfg).mcs.filter((m) => m.mcs < cfg.mcs && !C.exclusion(Object.assign({}, cfg, { mcs: m.mcs })));
+        const fallback = allowed[allowed.length - 1];
+        adjustNote = `MCS ${cfg.mcs} is not defined for ${cfg.bw} MHz with N_SS = ${cfg.nss} (${ex.status}: ${ex.note}). Using MCS ${fallback.mcs}.`;
+        cfg = C.normalize(Object.assign({}, cfg, { mcs: fallback.mcs, mod: null, R: null })).cfg;
+      }
+      state.cfg = cfg;
       redraw();
     }
     function select(labelNode, value, options, onchange, disabled) {
@@ -100,8 +111,14 @@
       const cfg = state.cfg, g = C.generation(cfg.gen), o = C.options(cfg);
       const mods = [...new Set(o.mcs.map((m) => m.mod))];
       const rates = o.mcs.filter((m) => m.mod === cfg.mod);
-      const maxLen = g.maxPsduOctets ? g.maxPsduOctets.value : 65535;
-      controls.replaceChildren(
+      const maxLen = g.maxPsduOctets.value;
+      const pf = g.payloadField;
+      const rateLabel = (m) => {
+        if (m.rateLabel) return `${m.R} (${m.rateLabel})`;
+        const ex = C.exclusion(Object.assign({}, cfg, { mcs: m.mcs }));
+        return `${m.R} (MCS ${C.displayMcs(Object.assign({}, cfg, { mcs: m.mcs }))})${ex ? ' — not defined' : ''}`;
+      };
+      controls.replaceChildren(...[
         h('h2', null, 'Configuration'),
         select('PHY generation', cfg.gen, Object.entries(D.generations).map(([id, gg]) => ({
           value: id, label: `${gg.label} — ${gg.phyName.split(' (')[0]}${AVAILABLE[id] === true ? '' : ` (${AVAILABLE[id]})`}`, disabled: AVAILABLE[id] !== true,
@@ -109,14 +126,17 @@
         select(term('Band'), cfg.band, o.bands.map((b) => ({ value: b, label: g.bands[b].label })), (v) => setCfg({ band: v })),
         select(term('Channel bandwidth'), cfg.bw, o.bandwidths.map((b) => ({ value: b, label: b + ' MHz' })), (v) => setCfg({ bw: Number(v) })),
         select(term('Guard interval'), cfg.gi, o.guardIntervals.map((x) => ({ value: x, label: x + ' µs' })), (v) => setCfg({ gi: Number(v) })),
-        select(term('Constellation mapping', 'Modulation'), cfg.mod, mods.map((m) => ({ value: m, label: m })), (v) => setCfg({ mod: v, R: null })),
-        select(term('R', 'Coding rate R'), cfg.R, rates.map((m) => ({ value: m.R, label: m.R + (m.rateLabel ? ` (${m.rateLabel})` : ` (MCS ${m.mcs})`) })), (v) => setCfg({ R: v })),
+        select(term('Constellation mapping', 'Modulation'), cfg.mod, mods.map((m) => ({ value: m, label: m })), (v) => setCfg({ mod: v, R: null, mcs: null })),
+        select(term('R', 'Coding rate R'), cfg.R, rates.map((m) => ({ value: m.R, label: rateLabel(m),
+          disabled: m.mcs !== null && !!C.exclusion(Object.assign({}, cfg, { mcs: m.mcs })) })), (v) => setCfg({ R: v, mcs: null })),
         select(term('N_SS', 'Spatial streams'), cfg.nss, o.spatialStreams.map((n) => ({ value: n, label: n })), (v) => setCfg({ nss: Number(v) })),
-        h('label', { class: 'ctl' }, h('span', null, term('PSDU', 'PSDU'), ' length (', term('LENGTH'), ', octets)'),
+        h('label', { class: 'ctl' }, h('span', null, pf.label, ' (', term(pf.term, pf.name), ', octets)'),
           h('input', { type: 'number', min: 1, max: maxLen, value: cfg.payload,
             onchange: (e) => setCfg({ payload: Math.min(maxLen, Math.max(1, Number(e.target.value) || 1)) }) }),
           h('div', { class: 'hint' }, `1 … ${maxLen} octets`)),
-        h('div', { class: 'hint' }, g.ppduFormat, ' · ', D.documents[g.bands[cfg.band].doc || g.doc].doc, ', Clause ', D.documents[g.bands[cfg.band].doc || g.doc].clause));
+        adjustNote ? h('div', { class: 'notice warn' }, adjustNote) : null,
+        h('div', { class: 'hint' }, term(g.ppduFormat, g.ppduFormat), ' · ', D.documents[g.bands[cfg.band].doc || g.doc].doc, ', Clause ', D.documents[g.bands[cfg.band].doc || g.doc].clause),
+      ].filter(Boolean)); // replaceChildren would print "null" for empty slots
     }
 
     function redraw() {

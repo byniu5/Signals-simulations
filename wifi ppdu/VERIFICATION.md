@@ -7,7 +7,7 @@ No clause number was read in the IEEE document. Top-level clauses are those give
 **Status rule:** *verified* = the exact value is stated by at least one public secondary source and matches an
 independent check (a second source, arithmetic, or the pre-research plan). Everything else is *unverified*.
 
-- Value entries: **119** — verified **98**, unverified **21**
+- Value entries: **126** — verified **105**, unverified **21**
 
 ## Unverified — please check against the standard
 
@@ -15,25 +15,25 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 |---|---|---|---|
 | `legacy.phaseRotationDeg` | {"20":[0],"40":[0,90],"80":[0,180,180,180],"160":[0,180,180,180,0,180,180,180]} | pat-phase-rot, keysight-nonht-dup | 40 MHz {1, j} and 80 MHz {1,-1,-1,-1} are stated by a patent (verified level); the 160 MHz pattern (two 80 MHz patterns) was not found in a source, so the entry as a whole stays unverified. |
 | `generations.nonHT.lsigBits` | [{"name":"RATE","bits":4},{"name":"Reserved","bits":1},{"name":"LENGTH","bits":12},{"na… | plan | 24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers). |
-| `generations.nonHT.maxPsduOctets` | 4095 octet | plan | largest value of the 12-bit LENGTH field |
 | `generations.HT.toneplan.20.pilots` | [-21,-7,7,21] | plan | same positions as Non-HT; no source found for HT 20 MHz specifically |
-| `generations.HT.encoders` | {"maxMbpsPerEncoder":{"0.8":320,"0.4":350}} | ns3-ht | N_ES = ceil(rate / threshold). ns-3 derived these thresholds by observing where N_ES increments in Tables 19-27..19-41 (802.11-2016); they are not stated as a rule in the standard. |
+| `generations.HT.encoders` | {"ndbpsPerEncoder":1080} | review-2, ns3-ht | N_ES = 2 when N_DBPS > 1080 (= ceil(N_DBPS / 1080) for N_SS <= 4). ns-3's 320/350 Mb/s rate thresholds give the same N_ES for every HT MCS with N_SS <= 4. |
+| `generations.HT.maxPsduOctets` | 65535 octet | plan | 16-bit HT Length subfield of HT-SIG |
 | `generations.VHT.toneplan.160.occupied` | [[-250,-130],[-126,-6],[6,126],[130,250]] | plan | Two 80 MHz plans at ±128 (4 x 121 = 484 = 468 + 16): consistent arithmetic, but index ranges not found in a source. |
-| `generations.VHT.encoders` | {"maxMbpsPerEncoder":{"0.8":540,"0.4":600},"exceptions":[{"bw":80,"nss":7,"mcs":2,"N_ES… | ns3-vht | ns-3 rule derived from Tables 21-30..21-61 (802.11-2016): N_ES = ceil(rate / threshold) plus exceptions. |
+| `generations.VHT.maxPsduOctets` | 1048575 octet | plan | APEP_LENGTH upper bound; in practice the 5484 µs maximum PPDU duration limits it first |
 | `generations.VHT.txtime.shortGiRounding` | true | mw-duration, plan | Same 4 µs alignment as HT-mixed expected for VHT (TXTIME eq. in 21.4.3 of 802.11-2016 per MathWorks); not confirmed. |
 | `generations.HE.toneplan.20.pilots` | [-116,-90,-48,-22,22,48,90,116] | pat-he-pilots-242, plan | Stated by one patent; marked unverified in review (not to be derived from the 80 MHz set). |
 | `generations.HE.toneplan.40.pilots` | [-238,-212,-170,-144,-104,-78,-36,-10,10,36,78,104,144,170,212,238] | plan | Value from the pre-research plan only; no source found. |
 | `generations.HE.N_LTF` | {"1":1,"2":2,"3":4,"4":4} | plan | Assumed equal to the VHT mapping; ns-3 caps HE-LTFs at 8 but does not show the mapping. |
 | `generations.HE.dataField.N_DBPS_rounding` | floor | tgbe-ndbps | N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector only. None of the 72 ns-3 HE TXTIME vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool. |
-| `generations.HE.dataField.N_SD_short` | {"242":60,"484":120,"996":240,"1992":492} | pat-nsd-short, plan | Not found directly. Consistent with the multi-RU patent (484+242 -> 180, 996+484 -> 360) and with N_DBPS,short being an integer for every MCS. 1992 = 2 x 996-tone RU (160 MHz). |
+| `lsig.spoofRule` | {"legacyPreamble":20,"symbol":4,"octetsPerSymbol":3,"subtract":3} | review-2, ieee-13-1002 | LENGTH = ceil((TXTIME − SignalExtension − 20) / 4) · 3 − 3 for HT, VHT and HE. Reviewer-supplied; consistent with the 5484 µs maximum (LENGTH = 4095). Subtracting the 2.4 GHz signal extension, and an extra HE-specific offset, are not confirmed. |
 | `ldpc.codewordTable` | [{"maxAvbits":648,"N_CW":1,"L_long":1296,"L_short":648,"threshold":912},{"maxAvbits":12… | plan | Row i applies when N_avbits <= maxAvbits. L_long is used if N_avbits >= N_pld + threshold·(1 − R). Last row: N_CW = ceil(N_pld / (1944·R)). Codeword lengths 648/1296/1944 confirmed by patents; thresholds not found. |
 | `ldpc.extraSymbolCondition` | {"puncturedFraction":0.1,"shorteningFactor":1.2} | pat-ldpc-extra, plan | Extra symbol (HT) / LDPC extra symbol segment (HE) if N_punc > 0.1·N_CW·L_LDPC·(1 − R) AND N_shrt < 1.2·N_punc·R/(1 − R). The patent uses this form for a longer-codeword variant. |
 | `interframe.bands.6.SIFS` | 16 µs | plan | assumed same as 5 GHz |
 | `interframe.bands.6.aSlotTime` | {"short":9} µs | plan |  |
 | `interframe.ackFrameOctets` | 14 octet | plan |  |
-| `generations.VHT.exclusions[80 MHz, MCS 6, NSS 3/7]` | excluded | ns3-vht | ns-3 excludes NSS 3 only; NSS 7 from memory. NSS 3 is also what the BCC divisibility rule (N_DBPS, N_CBPS divisible by N_ES) predicts — see tests. |
-| `generations.VHT.exclusions[80 MHz, MCS 9, NSS 6]` | excluded | plan | from memory, not in ns-3 |
-| `generations.VHT.exclusions[160 MHz, MCS 9, NSS 3]` | excluded | plan | from memory, not in ns-3; predicted by the BCC divisibility rule (N_CBPS = 11232 is not divisible by N_ES = 5) — see tests. |
+| `generations.VHT.exclusions[20 MHz, MCS 9, NSS 1/2/4]` | excluded | ieee-11-0577, ns3-vht | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
+| `generations.VHT.exclusions[80 MHz, MCS 6, NSS 3]` | excluded | ieee-11-0577, ns3-vht | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
+| `generations.VHT.exclusions[160 MHz, MCS 9, NSS 3]` | excluded | ieee-11-0577, ns3-vht | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
 
 ## Verified (secondary sources)
 
@@ -59,6 +59,7 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.nonHT.toneplan.20.pilots` | [-21,-7,7,21] | pat-legacy-sig, keysight-ofdm, plan |  |
 | `generations.nonHT.toneplan.20.N_SD` | 48 | ns3-ofdm, keysight-ofdm, plan |  |
 | `generations.nonHT.rates` | [{"rateMbps":6,"mod":"BPSK","R":"1/2"},{"rateMbps":9,"mod":"BPSK","R":"3/4"},{"rateMbps… | ns3-ofdm, plan |  |
+| `generations.nonHT.maxPsduOctets` | 4095 octet | ieee-13-1002, mw-duration, plan | largest value of the 12-bit LENGTH field (used in the 5484 µs maximum-TXTIME derivation) |
 | `generations.nonHT.dataField.N_service` | 16 bit | ns3-ofdm, plan | SERVICE field |
 | `generations.nonHT.dataField.N_tail` | 6 bit | ns3-ofdm, plan | BCC tail per encoder |
 | `generations.nonHT.fields[L-STF].duration` | 8 µs | pat-preamble-11a, ns3-ofdm, plan |  |
@@ -81,6 +82,7 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.HT.txtime.shortGiRounding` | true | ieee-07-2077, mw-duration, plan | HT-mixed: with short GI the data duration in TXTIME is rounded up to a multiple of 4 µs to align with legacy symbol boundaries. (ns-3 does not apply this rounding.) |
 | `generations.HT.txtime.legacySymbol` | 4 µs | ns3-ht, plan |  |
 | `generations.HT.fields[HT-SIG].duration` | 8 µs | ns3-ht, plan | HT-SIG1 + HT-SIG2 |
+| `generations.HT.fields[HT-SIG].modulation` | ["QBPSK","QBPSK"] | paper-ht-detect, pat-format-detect, plan | BPSK rotated by 90° relative to L-SIG: lets a receiver recognise an HT-mixed PPDU right after L-SIG. |
 | `generations.HT.fields[HT-STF].duration` | 4 µs | ns3-ht, plan |  |
 | `generations.HT.fields[HT-LTF].durationEach` | 4 µs | ns3-ht, plan |  |
 | `generations.VHT.ofdm.subcarrierSpacingKHz` | 312.5 kHz | arith, plan |  |
@@ -93,10 +95,12 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.VHT.toneplan.160.pilots` | [-231,-203,-167,-139,-117,-89,-53,-25,25,53,89,117,139,167,203,231] | pat-ht-vht-pilots, plan |  |
 | `generations.VHT.toneplan.160.N_SD` | 468 | ns3-vht, plan |  |
 | `generations.VHT.N_LTF` | {"1":1,"2":2,"3":4,"4":4} | ns3-ht, plan | Number of VHT-LTFs for N_STS 1-4 (ns-3 reuses the HT mapping). |
+| `generations.VHT.encoders` | {"ndbpsPerEncoder":2160,"exceptions":[{"bw":80,"nss":7,"mcs":2,"N_ES":3},{"bw":80,"nss"… | review-2, ns3-vht | N_ES = ceil(N_DBPS / 2160) plus the explicit overrides of ns-3 m_exceptionsMap (derived there from Tables 21-30..21-61 of 802.11-2016). Same as ns-3's 540 / 600 Mb/s rate rule (N_DBPS/4/540 = N_DBPS/3.6/600 = N_DBPS/2160). |
 | `generations.VHT.dataField.N_service` | 16 bit | ns3-vht, plan |  |
 | `generations.VHT.dataField.N_tail` | 6 bit per encoder | ns3-vht, plan |  |
 | `generations.VHT.txtime.legacySymbol` | 4 µs | ns3-vht, plan |  |
 | `generations.VHT.fields[VHT-SIG-A].duration` | 8 µs | ns3-vht, plan | VHT-SIG-A1 + VHT-SIG-A2 |
+| `generations.VHT.fields[VHT-SIG-A].modulation` | ["BPSK","QBPSK"] | pat-format-detect, plan | VHT-SIG-A1 looks like a Non-HT/HT receiver would expect (BPSK); VHT-SIG-A2 is rotated by 90° (QBPSK), which identifies a VHT PPDU. |
 | `generations.VHT.fields[VHT-STF].duration` | 4 µs | ns3-vht, plan |  |
 | `generations.VHT.fields[VHT-LTF].durationEach` | 4 µs | ns3-vht, plan |  |
 | `generations.VHT.fields[VHT-SIG-B].duration` | 4 µs | mw-vht-ppdu, ns3-vht, plan | Present in VHT SU PPDUs too (MathWorks: 17-bit VHT-SIG-B Length at 20 MHz SU). ns-3 models it for MU only. |
@@ -121,6 +125,7 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.HE.codingRule` | {"bccMaxNss":4,"bccMaxMcs":9,"bccMaxRuTones":242} | ieee-18-1460 | BCC may only be used for MCS 0-9, N_SS <= 4 and RU <= 242 tones; LDPC otherwise. This app uses LDPC for every HE configuration (stated simplification). — clause as cited: P802.11ax D0.2 26.3.10.4 (draft numbering); the final 802.11ax-2021 clause number was not read |
 | `generations.HE.dataField.N_service` | 16 bit | pat-padding, plan |  |
 | `generations.HE.dataField.N_tail` | 0 bit | pat-padding, plan | LDPC has no tail bits (N_tail = 6·N_ES only for BCC). |
+| `generations.HE.dataField.N_SD_short` | {"26":6,"52":12,"106":24,"242":60,"484":120,"996":240,"1992":492} | review-2, pat-nsd-short | Looked up by RU size (1992 = 2 x 996-tone RU at 160 MHz); table supplied in review, consistent with the multi-RU patent. |
 | `generations.HE.padding.equations` | ["N_Excess = mod(8·APEP_LENGTH + N_tail + N_service, N_DBPS)","N_SYM,init = ceil((8·APE… | pat-padding, plan | Secondary: patents quoting draft text (m_STBC = 1 here). |
 | `generations.HE.padding.aRange` | [1,2,3,4] | pat-pe, plan | a = pre-FEC padding factor |
 | `generations.HE.packetExtension.nominalPacketPadding` | [0,8,16] µs | pat-pe, plan |  |
@@ -129,6 +134,9 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `generations.HE.fields[RL-SIG].duration` | 4 µs | ns3-he, plan | repeated L-SIG (ns-3: L-SIG + RL-SIG = 8 µs) |
 | `generations.HE.fields[HE-SIG-A].duration` | 8 µs | ns3-he, plan | HE SU; 16 µs in an HE ER SU PPDU |
 | `generations.HE.fields[HE-STF].duration` | 4 µs | ns3-he, plan | HE SU/MU; 8 µs in an HE TB PPDU |
+| `lsig.nonHtLength` | PSDU length in octets | review-2, plan |  |
+| `lsig.maxLength` | 4095 octet | ieee-13-1002, mw-duration, plan |  |
+| `lsig.maxPpdu` | 5484 µs | ieee-13-1002, mw-duration, arith | (4095 + 3) / 3 · 4 + 20 = 5484 µs: the longest duration an L-SIG LENGTH can announce (HT, VHT, HE PPDUs). |
 | `ldpc.shorteningPuncturing` | ["N_shrt = max(0, N_CW·L_LDPC·R − N_pld)","N_punc = max(0, N_CW·L_LDPC − N_avbits − N_s… | arxiv-ldpc, plan |  |
 | `interframe.bands.5.SIFS` | 16 µs | wiki-sifs, wiki-difs, plan |  |
 | `interframe.bands.5.aSlotTime` | {"short":9} µs | wiki-difs, plan |  |
@@ -136,7 +144,6 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 | `interframe.bands.2.4.aSlotTime` | {"short":9,"long":20} µs | wiki-difs, plan |  |
 | `interframe.difsRule` | DIFS = SIFS + 2 × aSlotTime | wiki-difs, plan |  |
 | `interframe.signalExtension` | {"5":0,"6":0,"2.4":6} µs | ns3-ofdm, ns3-txdur, plan | OFDM PPDUs in the 2.4 GHz band end with a 6 µs signal extension (no transmission) so that the receiver has time to finish decoding before SIFS. |
-| `generations.VHT.exclusions[20 MHz, MCS 9, NSS 1/2/4/5/7/8]` | excluded | ns3-vht, plan | 20 MHz VHT-MCS 9 exists only for N_SS = 3 and 6 (ns-3 implements this for NSS <= 8). |
 
 ## Sources
 
@@ -155,6 +162,11 @@ independent check (a second source, arithmetic, or the pre-research plan). Every
 - **pat-he-pilots-80** — [US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410)
 - **ieee-16-0623** — [IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.](https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx)
 - **mw-hesuconfig** — [MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.](https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html)
+- **review-2** — Second review pass (2026-10): VHT N_ES rule, N_SD,short table, L-SIG LENGTH rule — supplied by the reviewer
+- **ieee-11-0577** — IEEE 802.11-11/0577r0 — TGac draft list of excluded VHT-MCS / bandwidth / N_SS combinations (reviewer-cited; not read by the author)
+- **ieee-13-1002** — [IEEE 802.11-13/1002r1, SB2 clause 22 comment resolution — max TXTIME (4095 + 3) x 4/3 + 20 = 5484 µs](https://mentor.ieee.org/802.11/dcn/13/11-13-1002-01-00ac-sb2-clause-22-comment-resolution.docx)
+- **pat-format-detect** — [US patents 10637706 family, 9025428 (HT-SIG QBPSK; VHT-SIG-A1 BPSK and VHT-SIG-A2 QBPSK for format detection)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10637706)
+- **paper-ht-detect** — [A Novel Method to Detect the Frame-Formats in 802.11n (AMEII 2016): HT-SIG rotated 90° relative to L-SIG](https://atlantis-press.com/proceedings/ameii-16/25854744)
 - **pat-preamble-11a** — [US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972)
 - **pat-phase-rot** — [US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172)
 - **keysight-nonht-dup** — [Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)](https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm)

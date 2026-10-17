@@ -16,6 +16,11 @@ const VIEW_FILES = list('systems/wifi').filter((f) => /view-|module/.test(f));
 const CORE_FILES = list('core');
 const UI_FILES = ['index.html', ...CORE_FILES, ...VIEW_FILES];
 
+test('every UI script parses (catches syntax errors the calculator tests cannot see)', () => {
+  const vm = require('node:vm');
+  for (const f of [...CORE_FILES, ...list('systems/wifi')]) assert.doesNotThrow(() => new vm.Script(read(f), { filename: f }), f);
+});
+
 test('every glossary-linked label used in the views exists in the glossary', () => {
   const used = new Set();
   for (const f of VIEW_FILES) {
@@ -30,13 +35,16 @@ test('every glossary-linked label used in the views exists in the glossary', () 
 });
 
 test('every field of the generations with views has a glossary entry', () => {
-  for (const gen of ['nonHT']) {
-    for (const f of D.generations[gen].fields) {
+  for (const gen of ['nonHT', 'HT', 'VHT']) {
+    const g = D.generations[gen];
+    for (const f of g.fields) {
       const id = f.kind === 'data' ? 'Data field' : f.name;
       assert.ok(D.terms[id], `${gen}: no glossary entry for ${id}`);
     }
+    assert.ok(D.terms[g.ppduFormat], `${gen}: no glossary entry for ${g.ppduFormat}`);
+    assert.ok(D.terms[g.payloadField.term], `${gen}: no glossary entry for ${g.payloadField.term}`);
   }
-  for (const id of ['Signal extension', 'TXTIME', 'T_FFT', 'T_DFT']) assert.ok(D.terms[id], id);
+  for (const id of ['Signal extension', 'Short GI', 'TXTIME', 'T_FFT', 'T_DFT', 'QBPSK', 'Phase rotation', 'N_LTF']) assert.ok(D.terms[id], id);
 });
 
 test('glossary entries have a definition and a known document; cited sub-clauses name a source', () => {

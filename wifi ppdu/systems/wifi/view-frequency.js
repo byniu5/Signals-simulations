@@ -56,18 +56,21 @@
     ];
     for (const r of V.runs(tones)) if (r.kind === 'dc' || r.kind === 'null') cands.push({ k: r.from, priority: 2 }, { k: r.to, priority: 2 });
     const labels = V.placeLabels(cands.map((c) => Object.assign(c, { x: X(c.k) })), 44);
+    // keep the outermost labels inside the plot (and clear of the axis titles on the left)
+    const anchor = (x) => (x < LEFT + 24 ? { x: x - 3, 'text-anchor': 'start' } : x > W - RIGHT - 24 ? { x: x + 3, 'text-anchor': 'end' } : { x, 'text-anchor': 'middle' });
     for (const l of labels) {
       svg.append(s('line', { x1: l.x, x2: l.x, y1: BASE, y2: BASE + 5, stroke: '#93a0b8' }),
-        s('text', { x: l.x, y: BASE + 18, 'text-anchor': 'middle', class: 'mono' }, V.signed(l.k, 0)),
-        s('text', { x: l.x, y: BASE + 33, 'text-anchor': 'middle', class: 'muted mono' }, V.signed(fMHz(l.k), 4)));
+        s('text', Object.assign({ y: BASE + 18, class: 'mono' }, anchor(l.x)), V.signed(l.k, 0)),
+        s('text', Object.assign({ y: BASE + 33, class: 'muted mono' }, anchor(l.x)), V.signed(fMHz(l.k), 4)));
     }
-    svg.append(s('text', { x: LEFT - 6, y: BASE + 18, 'text-anchor': 'end', class: 'muted' }, 'k'),
-      s('text', { x: LEFT - 6, y: BASE + 33, 'text-anchor': 'end', class: 'muted' }, 'MHz'));
+    svg.append(s('text', { x: LEFT - 8, y: BASE + 18, 'text-anchor': 'end', class: 'muted' }, 'k'),
+      s('text', { x: LEFT - 8, y: BASE + 33, 'text-anchor': 'end', class: 'muted' }, 'MHz'));
 
     // pilot indices above the pilots (when they fit)
     const pilots = tones.filter((t) => t.kind === 'pilot');
     const pilotLabels = V.placeLabels(pilots.map((t) => ({ k: t.k, x: X(t.k), priority: 1 })), 26);
-    if (pilotLabels.length === pilots.length) {
+    const pilotsLabelled = pilotLabels.length === pilots.length;
+    if (pilotsLabelled) {
       for (const l of pilotLabels) svg.append(s('text', { x: l.x, y: BASE - H_PILOT - 8, 'text-anchor': 'middle', class: 'mono', fill: V.KIND.pilot.color }, V.signed(l.k, 0)));
     }
 
@@ -76,7 +79,7 @@
       if (r.kind !== 'guard') continue;
       const x0 = X(r.from) - px / 2, x1 = X(r.to) + px / 2, y = BASE + 46;
       svg.append(s('path', { d: `M${x0},${y - 4} V${y} H${x1} V${y - 4}`, fill: 'none', stroke: V.KIND.guard.color }),
-        s('text', { x: (x0 + x1) / 2, y: y + 14, 'text-anchor': 'middle', class: 'muted small' }, `guard ${V.signed(r.from, 0)}…${V.signed(r.to, 0)} (${r.n})`));
+        s('text', Object.assign({ y: y + 14, class: 'muted small' }, anchor((x0 + x1) / 2)), `guard ${V.signed(r.from, 0)}…${V.signed(r.to, 0)} (${r.n})`));
     }
     svg.append(s('text', { x: LEFT, y: 290, class: 'muted' }, 'subcarrier index k (top) and frequency offset k·Δ_F from the channel centre (bottom)'));
 
@@ -97,7 +100,9 @@
     const occupiedMHz = ((kMax - kMin + 1) * dfKHz) / 1000;
     const facts = h('div', { class: 'formula' },
       term('FFT size'), ` = ${fft}   ·   `, term('Δ_F'), ` = ${fmt(dfKHz, 3)} kHz   →   ${fft} × ${fmt(dfKHz, 3)} kHz = ${fmt((fft * dfKHz) / 1000, 3)} MHz `, term('Channel bandwidth', 'channel'), '   ·   ',
-      term('N_SD'), ` = ${map.N_SD}, `, term('N_SP'), ` = ${map.N_SP}, `, term('N_ST'), ` = ${map.N_ST}   ·   used subcarriers ${V.signed(kMin, 0)}…${V.signed(kMax, 0)} span ${fmt(occupiedMHz, 4)} MHz`);
+      term('N_SD'), ` = ${map.N_SD}, `, term('N_SP'), ` = ${map.N_SP}, `, term('N_ST'), ` = ${map.N_ST}   ·   used subcarriers ${V.signed(kMin, 0)}…${V.signed(kMax, 0)} span ${fmt(occupiedMHz, 4)} MHz`,
+      pilotsLabelled ? null : [h('br'), term('Pilot subcarrier', 'pilots'), ' at k = ', pilots.map((t) => V.signed(t.k, 0)).join(', ')],
+      counts.null ? [h('br'), term('Null subcarrier', 'null'), ' subcarriers ', V.runs(tones).filter((r) => r.kind === 'null').map((r) => `${V.signed(r.from, 0)}…${V.signed(r.to, 0)}`).join(', '), ': the centre of each 80 MHz half'] : null);
 
     const explain = h('div', { class: 'explain' },
       h('p', null, 'Each bar is one ', term('Subcarrier', 'subcarrier'), ' of a single ', term('OFDM symbol', 'OFDM symbol'),
@@ -108,7 +113,9 @@
           ? 'These fields repeat the 20 MHz Non-HT plan in every 20 MHz subchannel, each copy multiplied by its own phase rotation.'
           : 'At 20 MHz the pre-HT fields use the same 52-subcarrier plan as a Non-HT Data field.',
           ' Fields using this plan: ', fieldNames.join(', '), '.')
-        : h('p', null, 'Fields using this plan: ', fieldNames.join(', '), '. Click the OFDM symbol step above to see the same symbol in time.'));
+        : h('p', null, 'Fields using this plan: ', fieldNames.join(', '),
+          fieldNames.some((n) => /STF/.test(n)) ? ' (the short training fields put energy on only a subset of these subcarriers)' : '',
+          '. Click the OFDM symbol step above to see the same symbol in time.'));
 
     return h('div', null, head, chips, h('div', { style: { margin: '8px 0' } }, svg), facts, explain);
   };

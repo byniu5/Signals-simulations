@@ -13,7 +13,7 @@
  *                  found during research (see `evidence`) AND it matches an independent
  *                  check: a second source, arithmetic, or the value written down in the
  *                  pre-research plan before searching (source id 'plan'), OR it was supplied in
- *                  review together with a citation (source kind 'reviewer-cited').
+ *                  review (source kind 'reviewer-cited'; the reviewer's citation is in its title).
  *    'unverified'  anything else — please check these against the standard.
  *
  *  clause
@@ -61,6 +61,11 @@ var WIFI_STANDARDS = {
     'pat-he-pilots-80': { title: 'US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410', kind: 'patent' },
     'ieee-16-0623': { title: 'IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx', kind: 'reviewer-cited' },
     'mw-hesuconfig': { title: 'MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.', url: 'https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html', kind: 'reviewer-cited' },
+    'review-2': { title: 'Second review pass (2026-10): VHT N_ES rule, N_SD,short table, L-SIG LENGTH rule — supplied by the reviewer', kind: 'reviewer-cited' },
+    'ieee-11-0577': { title: 'IEEE 802.11-11/0577r0 — TGac draft list of excluded VHT-MCS / bandwidth / N_SS combinations (reviewer-cited; not read by the author)', kind: 'reviewer-cited' },
+    'ieee-13-1002': { title: 'IEEE 802.11-13/1002r1, SB2 clause 22 comment resolution — max TXTIME (4095 + 3) x 4/3 + 20 = 5484 µs', url: 'https://mentor.ieee.org/802.11/dcn/13/11-13-1002-01-00ac-sb2-clause-22-comment-resolution.docx', kind: 'ieee-contribution' },
+    'pat-format-detect': { title: 'US patents 10637706 family, 9025428 (HT-SIG QBPSK; VHT-SIG-A1 BPSK and VHT-SIG-A2 QBPSK for format detection)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10637706', kind: 'patent' },
+    'paper-ht-detect': { title: 'A Novel Method to Detect the Frame-Formats in 802.11n (AMEII 2016): HT-SIG rotated 90° relative to L-SIG', url: 'https://atlantis-press.com/proceedings/ameii-16/25854744', kind: 'paper' },
     'pat-preamble-11a': { title: 'US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972', kind: 'patent' },
     'pat-phase-rot': { title: 'US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172', kind: 'patent' },
     'keysight-nonht-dup': { title: 'Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)', url: 'https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm', kind: 'vendor' },
@@ -189,7 +194,8 @@ var WIFI_STANDARDS = {
         value: [{ name: 'RATE', bits: 4 }, { name: 'Reserved', bits: 1 }, { name: 'LENGTH', bits: 12 }, { name: 'Parity', bits: 1 }, { name: 'Tail', bits: 6 }],
         status: 'unverified', evidence: ['plan'], note: '24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers).',
       },
-      maxPsduOctets: { value: 4095, unit: 'octet', status: 'unverified', evidence: ['plan'], note: 'largest value of the 12-bit LENGTH field' },
+      maxPsduOctets: { value: 4095, unit: 'octet', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'plan'], note: 'largest value of the 12-bit LENGTH field (used in the 5484 µs maximum-TXTIME derivation)' },
+      payloadField: { name: 'LENGTH', term: 'LENGTH', label: 'PSDU length' },
       dataField: {
         N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'SERVICE field' },
         N_tail: { value: 6, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'BCC tail per encoder' },
@@ -239,10 +245,11 @@ var WIFI_STANDARDS = {
       N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'verified', evidence: ['ns3-ht', 'plan'],
         note: 'Number of HT-LTFs for N_STS (no STBC, no extension LTFs).' },
       encoders: {
-        value: { maxMbpsPerEncoder: { 0.8: 320, 0.4: 350 } }, status: 'unverified', evidence: ['ns3-ht'],
-        note: 'N_ES = ceil(rate / threshold). ns-3 derived these thresholds by observing where N_ES increments in ' +
-          'Tables 19-27..19-41 (802.11-2016); they are not stated as a rule in the standard.',
+        value: { ndbpsPerEncoder: 1080 }, status: 'unverified', evidence: ['review-2', 'ns3-ht'],
+        note: 'N_ES = 2 when N_DBPS > 1080 (= ceil(N_DBPS / 1080) for N_SS <= 4). ns-3\'s 320/350 Mb/s rate thresholds give the same N_ES for every HT MCS with N_SS <= 4.',
       },
+      maxPsduOctets: { value: 65535, unit: 'octet', status: 'unverified', evidence: ['plan'], note: '16-bit HT Length subfield of HT-SIG' },
+      payloadField: { name: 'HT Length', term: 'HT Length', label: 'PSDU length' },
       dataField: {
         N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-ht', 'plan'] },
         N_tail: { value: 6, unit: 'bit per encoder', status: 'verified', evidence: ['ns3-ht', 'plan'], note: '6 x N_ES (ns-3: equation 19-32)' },
@@ -258,7 +265,9 @@ var WIFI_STANDARDS = {
         { name: 'L-LTF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-SIG', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'HT-SIG', toneplan: 'legacy', symbols: 2,
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: 'HT-SIG1 + HT-SIG2' } },
+          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: 'HT-SIG1 + HT-SIG2' },
+          modulation: { value: ['QBPSK', 'QBPSK'], status: 'verified', evidence: ['paper-ht-detect', 'pat-format-detect', 'plan'],
+            note: 'BPSK rotated by 90° relative to L-SIG: lets a receiver recognise an HT-mixed PPDU right after L-SIG.' } },
         { name: 'HT-STF', duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] } },
         { name: 'HT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] } },
         { name: 'Data', kind: 'data' },
@@ -296,17 +305,15 @@ var WIFI_STANDARDS = {
       maxMcs: 9,
       /* MCS / bandwidth / N_SS combinations that the VHT MCS tables do not define */
       exclusions: [
-        { bw: 20, mcs: 9, nss: [1, 2, 4, 5, 7, 8], status: 'verified', evidence: ['ns3-vht', 'plan'],
-          note: '20 MHz VHT-MCS 9 exists only for N_SS = 3 and 6 (ns-3 implements this for NSS <= 8).' },
-        { bw: 80, mcs: 6, nss: [3, 7], status: 'unverified', evidence: ['ns3-vht'], note: 'ns-3 excludes NSS 3 only; NSS 7 from memory. NSS 3 is also what the BCC divisibility rule (N_DBPS, N_CBPS divisible by N_ES) predicts — see tests.' },
-        { bw: 80, mcs: 9, nss: [6], status: 'unverified', evidence: ['plan'], note: 'from memory, not in ns-3' },
-        { bw: 160, mcs: 9, nss: [3], status: 'unverified', evidence: ['plan'], note: 'from memory, not in ns-3; predicted by the BCC divisibility rule (N_CBPS = 11232 is not divisible by N_ES = 5) — see tests.' },
+        { bw: 20, mcs: 9, nss: [1, 2, 4], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
+        { bw: 80, mcs: 6, nss: [3], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
+        { bw: 160, mcs: 9, nss: [3], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
       ],
       N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'verified', evidence: ['ns3-ht', 'plan'],
         note: 'Number of VHT-LTFs for N_STS 1-4 (ns-3 reuses the HT mapping).' },
       encoders: {
         value: {
-          maxMbpsPerEncoder: { 0.8: 540, 0.4: 600 },
+          ndbpsPerEncoder: 2160,
           exceptions: [
             { bw: 80, nss: 7, mcs: 2, N_ES: 3 }, { bw: 80, nss: 7, mcs: 7, N_ES: 6 }, { bw: 80, nss: 7, mcs: 8, N_ES: 6 },
             { bw: 80, nss: 8, mcs: 7, N_ES: 6 }, { bw: 160, nss: 4, mcs: 7, N_ES: 6 }, { bw: 160, nss: 5, mcs: 8, N_ES: 8 },
@@ -315,9 +322,11 @@ var WIFI_STANDARDS = {
             { bw: 160, nss: 7, mcs: 9, N_ES: 12 },
           ],
         },
-        status: 'unverified', evidence: ['ns3-vht'],
-        note: 'ns-3 rule derived from Tables 21-30..21-61 (802.11-2016): N_ES = ceil(rate / threshold) plus exceptions.',
+        status: 'verified', evidence: ['review-2', 'ns3-vht'],
+        note: 'N_ES = ceil(N_DBPS / 2160) plus the explicit overrides of ns-3 m_exceptionsMap (derived there from Tables 21-30..21-61 of 802.11-2016). Same as ns-3\'s 540 / 600 Mb/s rate rule (N_DBPS/4/540 = N_DBPS/3.6/600 = N_DBPS/2160).',
       },
+      maxPsduOctets: { value: 1048575, unit: 'octet', status: 'unverified', evidence: ['plan'], note: 'APEP_LENGTH upper bound; in practice the 5484 µs maximum PPDU duration limits it first' },
+      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length' },
       dataField: {
         N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-vht', 'plan'] },
         N_tail: { value: 6, unit: 'bit per encoder', status: 'verified', evidence: ['ns3-vht', 'plan'] },
@@ -332,7 +341,9 @@ var WIFI_STANDARDS = {
         { name: 'L-LTF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-SIG', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'VHT-SIG-A', toneplan: 'legacy', symbols: 2,
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'], note: 'VHT-SIG-A1 + VHT-SIG-A2' } },
+          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'], note: 'VHT-SIG-A1 + VHT-SIG-A2' },
+          modulation: { value: ['BPSK', 'QBPSK'], status: 'verified', evidence: ['pat-format-detect', 'plan'],
+            note: 'VHT-SIG-A1 looks like a Non-HT/HT receiver would expect (BPSK); VHT-SIG-A2 is rotated by 90° (QBPSK), which identifies a VHT PPDU.' } },
         { name: 'VHT-STF', duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'] } },
         { name: 'VHT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'] } },
         { name: 'VHT-SIG-B',
@@ -353,6 +364,7 @@ var WIFI_STANDARDS = {
       bandwidths: [20, 40, 80, 160],
       spatialStreams: [1, 2, 3, 4],
       coding: 'LDPC',
+      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length' },
       ofdm: {
         subcarrierSpacingKHz: { value: 78.125, unit: 'kHz', status: 'verified', evidence: ['ns3-he', 'arith', 'plan'], note: '1 / 12.8 µs = 20 MHz / 256' },
         T_DFT: { value: 12.8, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'ns-3: symbol = 12800 ns + GI' },
@@ -430,10 +442,9 @@ var WIFI_STANDARDS = {
             'vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, ' +
             'MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool.' },
         N_SD_short: {
-          value: { 242: 60, 484: 120, 996: 240, 1992: 492 },
-          status: 'unverified', evidence: ['pat-nsd-short', 'plan'],
-          note: 'Not found directly. Consistent with the multi-RU patent (484+242 -> 180, 996+484 -> 360) and with ' +
-            'N_DBPS,short being an integer for every MCS. 1992 = 2 x 996-tone RU (160 MHz).',
+          value: { 26: 6, 52: 12, 106: 24, 242: 60, 484: 120, 996: 240, 1992: 492 },
+          status: 'verified', evidence: ['review-2', 'pat-nsd-short'],
+          note: 'Looked up by RU size (1992 = 2 x 996-tone RU at 160 MHz); table supplied in review, consistent with the multi-RU patent.',
         },
       },
       /* Pre-FEC padding (a-factor) procedure — equations reproduced by pat-padding */
@@ -478,6 +489,24 @@ var WIFI_STANDARDS = {
         { name: 'PE', kind: 'pe', optional: true },
       ],
     },
+  },
+
+  /* ---------------------------------------------------------------------------
+   *  L-SIG LENGTH. In a Non-HT PPDU it is the PSDU length. HT, VHT and HE PPDUs
+   *  set it so that a legacy receiver, which assumes the 6 Mb/s rate (3 octets
+   *  per 4 µs symbol), computes the true duration and defers for it.
+   * ------------------------------------------------------------------------- */
+  lsig: {
+    nonHtLength: { value: 'PSDU length in octets', status: 'verified', evidence: ['review-2', 'plan'] },
+    spoofRule: {
+      value: { legacyPreamble: 20, symbol: 4, octetsPerSymbol: 3, subtract: 3 },
+      status: 'unverified', evidence: ['review-2', 'ieee-13-1002'],
+      note: 'LENGTH = ceil((TXTIME − SignalExtension − 20) / 4) · 3 − 3 for HT, VHT and HE. Reviewer-supplied; consistent with ' +
+        'the 5484 µs maximum (LENGTH = 4095). Subtracting the 2.4 GHz signal extension, and an extra HE-specific offset, are not confirmed.',
+    },
+    maxLength: { value: 4095, unit: 'octet', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'plan'] },
+    maxPpdu: { value: 5484, unit: 'µs', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'arith'],
+      note: '(4095 + 3) / 3 · 4 + 20 = 5484 µs: the longest duration an L-SIG LENGTH can announce (HT, VHT, HE PPDUs).' },
   },
 
   /* ---------------------------------------------------------------------------
@@ -551,7 +580,7 @@ var WIFI_STANDARDS = {
     'L-SIG': { expansion: 'Non-HT (legacy) SIGNAL field', alias: 'SIGNAL field (Clause 17 name)', doc: 'c17',
       definition: 'One OFDM symbol (4 µs), always BPSK rate 1/2, carrying RATE and LENGTH. From them every receiver — including older ones — computes how long the PPDU lasts and stays quiet for that time.' },
     'RATE': { doc: 'c17', definition: 'The 4-bit L-SIG subfield that tells a Non-HT receiver the modulation and coding rate of the Data field.' },
-    'LENGTH': { doc: 'c17', definition: 'The 12-bit L-SIG subfield with the PSDU length in octets (Non-HT). In HT/VHT/HE PPDUs it is set so that legacy receivers compute the right duration.' },
+    'LENGTH': { doc: 'c17', definition: 'The 12-bit L-SIG subfield. In a Non-HT PPDU it is the PSDU length in octets. In HT, VHT and HE PPDUs it is set to ceil((TXTIME − 20 µs)/4 µs)·3 − 3, so that a legacy receiver — which assumes 6 Mb/s, i.e. 3 octets per 4 µs symbol — computes the true duration and stays quiet for it.' },
     'Data field': { doc: 'c17',
       definition: 'The part of the PPDU after the preamble and signal fields: SERVICE field + PSDU + tail bits + pad bits, coded and modulated onto N_SYM OFDM symbols.' },
     'SERVICE field': { doc: 'c17',
@@ -611,6 +640,35 @@ var WIFI_STANDARDS = {
     'IFFT': { expansion: 'inverse fast Fourier transform', doc: 'c17', definition: 'Turns the N_FFT subcarrier values of one OFDM symbol into N_FFT time-domain samples (the useful part).' },
     'Channel bandwidth': { doc: 'c17', definition: 'Width of the channel: 20 MHz for Non-HT; 40 MHz from HT; 80/160 MHz from VHT.' },
     'Band': { doc: 'c17', definition: 'Frequency band of operation: 5 GHz (802.11a, Clause 17) or 2.4 GHz (802.11g ERP-OFDM, Clause 18). The band changes SIFS, aSlotTime and the signal extension.' },
+    'HT-mixed format PPDU': { doc: 'c19',
+      definition: 'The 802.11n PPDU format used here. It starts with the Non-HT preamble (L-STF, L-LTF, L-SIG) so that older stations can still read the duration, followed by HT-SIG, HT-STF and the HT-LTFs before the Data field.' },
+    'VHT SU PPDU': { expansion: 'VHT single-user PPDU', doc: 'c21',
+      definition: 'An 802.11ac PPDU addressed to one station: Non-HT preamble, VHT-SIG-A, VHT-STF, VHT-LTFs, VHT-SIG-B, Data.' },
+    'HT-SIG': { expansion: 'HT SIGNAL field', doc: 'c19',
+      definition: 'Two OFDM symbols (8 µs) on the pre-HT subcarrier plan, modulated with QBPSK. Carries the MCS, the channel bandwidth (20/40 MHz), the HT Length, short GI, coding (BCC/LDPC), STBC and the number of extension spatial streams, protected by a CRC.' },
+    'HT-STF': { expansion: 'HT Short Training field', doc: 'c19',
+      definition: 'One 4 µs symbol after HT-SIG. The receiver re-adjusts its gain (AGC) here, because from this point the signal may use more streams or be beamformed differently from the legacy part.' },
+    'HT-LTF': { expansion: 'HT Long Training field', doc: 'c19',
+      definition: 'One 4 µs symbol per training dimension (N_LTF = 1, 2, 4, 4 for 1–4 streams). The receiver estimates the full MIMO channel — one matrix per subcarrier — which it needs to separate the spatial streams. This is the CSI used for MIMO detection and for beamforming feedback.' },
+    'VHT-SIG-A': { expansion: 'VHT SIGNAL A field', doc: 'c21',
+      definition: 'Two OFDM symbols (8 µs) on the pre-HT subcarrier plan: VHT-SIG-A1 in BPSK, VHT-SIG-A2 in QBPSK. Carries the bandwidth, STBC, group ID, number of space-time streams, short GI (with the N_SYM disambiguation bit), coding, the MCS of an SU PPDU, beamforming flag and a CRC.' },
+    'VHT-STF': { expansion: 'VHT Short Training field', doc: 'c21', definition: 'One 4 µs symbol for re-adjusting the gain (AGC) before the VHT part of the PPDU.' },
+    'VHT-LTF': { expansion: 'VHT Long Training field', doc: 'c21',
+      definition: 'One 4 µs symbol per training dimension (N_LTF = 1, 2, 4, 4 for 1–4 streams), on the VHT subcarrier plan. Used to estimate the MIMO channel on every subcarrier (CSI).' },
+    'VHT-SIG-B': { expansion: 'VHT SIGNAL B field', doc: 'c21', cited: { ref: '21.3.8.3.6 (802.11-2016 numbering)', source: 'mw-vht-ppdu' },
+      definition: 'One 4 µs symbol after the VHT-LTFs. In a VHT SU PPDU it carries the VHT-SIG-B Length (APEP_LENGTH in units of 4 octets); in a VHT MU PPDU also the MCS of each user.' },
+    'QBPSK': { expansion: 'quadrature BPSK', doc: 'c19',
+      definition: 'BPSK rotated by 90°: the two points lie on the imaginary axis (±j). HT-SIG and VHT-SIG-A2 use it, so a receiver can tell an HT or VHT PPDU from a Non-HT PPDU one symbol after L-SIG.' },
+    'Short GI': { expansion: 'short guard interval', doc: 'c19',
+      definition: 'The 0.4 µs guard interval of HT and VHT (T_SYM = 3.6 µs instead of 4.0 µs). In TXTIME the Data field is then rounded up to a multiple of 4 µs so the PPDU ends on the legacy symbol grid.' },
+    'N_LTF': { expansion: 'number of long-training symbols', doc: 'c19',
+      definition: 'Number of HT-LTF / VHT-LTF / HE-LTF symbols. It follows the number of space-time streams: 1, 2, 4, 4 for 1–4 (3 streams need 4 symbols because the training matrix is square).' },
+    'APEP_LENGTH': { expansion: 'A-MPDU pre-EOF padding length', doc: 'c21',
+      definition: 'The number of octets of the A-MPDU before the end-of-frame padding. VHT and HE PPDUs size their Data field from it (here: the payload length you enter).' },
+    'HT Length': { doc: 'c19', definition: 'The 16-bit HT-SIG subfield with the PSDU length in octets of an HT PPDU.' },
+    'Phase rotation': { doc: 'c19',
+      definition: 'In wider channels the pre-HT fields are sent once per 20 MHz subchannel; each copy is multiplied by its own factor (1 and j at 40 MHz; 1, −1, −1, −1 at 80 MHz) to keep the peak-to-average power ratio low.' },
+    'Spatial stream': { doc: 'c19', definition: 'One of N_SS independent data streams sent simultaneously over several antennas on the same subcarriers (MIMO spatial multiplexing).' },
     'MCS': { expansion: 'modulation and coding scheme', doc: 'c19', definition: 'Index for a combination of modulation and coding rate (HT and later). Non-HT has no MCS — it signals a data rate in RATE.' },
   },
 

@@ -7,6 +7,7 @@
   /** Output panel: the per-symbol and per-PPDU numbers with their formulas. */
   V.outputs = function (a) {
     const p = a.params, sy = a.symbols, tName = V.tUsefulName(a);
+    const ltfItem = a.timeline.items.find((i) => i.count && i.kind === 'training');
     const row = (label, value, formula) => h('tr', null, h('td', null, label, formula ? h('div', { class: 'f' }, formula) : null), h('td', null, value));
     const rows = [
       row(term('FFT size'), p.N_FFT),
@@ -25,8 +26,11 @@
       row(term('T_SYM'), V.us(p.T_SYM_ns) + ' µs', `T_GI + ${tName}`),
       row(term('Data rate'), fmt(p.rateMbps, 2) + ' Mb/s', `${fmt(p.N_DBPS, 3)} bits / ${V.us(p.T_SYM_ns)} µs`),
       row(term('N_SYM'), sy.N_SYM),
+      ltfItem ? row(term('N_LTF'), ltfItem.count, `${ltfItem.name} symbols for N_SS = ${p.N_SS}`) : null,
       sy.N_PAD !== undefined ? row(term('N_PAD'), sy.N_PAD + ' bits') : null,
       row(term('TXTIME'), V.us(a.timeline.txtime_ns) + ' µs', 'airtime of the whole PPDU'),
+      row(h('span', null, 'L-SIG ', term('LENGTH')), a.lsig.LENGTH,
+        a.lsig.rule === 'psdu' ? 'PSDU length' : `ceil((${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} − 20)/4)·3 − 3`),
     ];
     const u = a.unverified;
     const notice = u.airtime.length
@@ -35,8 +39,15 @@
         u.rate.length ? h('div', null, 'Data rate depends on unverified data: ', u.rate.join(', ')) : null,
         h('div', null, 'TXTIME / N_SYM depend on unverified data: ', u.airtime.join(', ')))
       : h('div', { class: 'notice ok' }, 'Every value used for these numbers is marked verified in the data file.');
+    const problems = [];
+    if (a.excluded) problems.push(`This MCS / bandwidth / N_SS combination is not defined in the VHT-MCS tables (${a.excluded.status}: ${a.excluded.note}).`);
+    if (a.maxPpdu.exceeded) problems.push(`TXTIME exceeds the maximum PPDU duration of ${V.us(a.maxPpdu.limit_ns)} µs that an L-SIG LENGTH can announce — this PPDU cannot be sent; reduce the payload or raise the MCS.`);
+    else if (!a.lsig.valid) problems.push(`L-SIG LENGTH ${a.lsig.LENGTH} exceeds ${a.lsig.maxLength}.`);
     return h('div', null, h('h2', null, 'Output'),
-      h('div', { class: 'small muted' }, a.mcsIndex === null ? `Data rate ${fmt(p.rateMbps, 2)} Mb/s (signalled in RATE)` : `MCS ${a.mcsIndex}`),
+      h('div', { class: 'small muted' }, a.mcsIndex === null
+        ? [`Data rate ${fmt(p.rateMbps, 2)} Mb/s (signalled in `, term('RATE'), ')']
+        : [term('MCS'), ` ${a.mcsIndex}`, a.cfg.gen === 'HT' && a.cfg.nss > 1 ? ` (= 8·(N_SS − 1) + ${a.cfg.mcs})` : '']),
+      problems.map((t) => h('div', { class: 'notice warn' }, t)),
       h('table', { class: 'kv' }, h('tbody', null, rows)), notice);
   };
 
@@ -82,9 +93,22 @@
       extra.push(h('div', null, 'Bits: ', g.lsigBits.value.map((b) => `${b.name} (${b.bits})`).join(' · '),
         ` = ${g.lsigBits.value.reduce((n, b) => n + b.bits, 0)} bits `, statusOf(g.lsigBits)));
     }
-    if (it.toneplan) {
-      extra.push(h('div', null, 'Subcarrier plan: ', it.toneplan === 'legacy' ? 'pre-HT (20 MHz Non-HT plan in every 20 MHz subchannel)' : 'Data-field plan of this PHY'));
+    if (def && def.modulation) {
+      const mods = def.modulation.value;
+      extra.push(h('div', null, 'Modulation: ', mods.map((m, i) => (mods.length > 1 ? `${name}${i + 1} ` : '') + m).join(', '), ' (', term('QBPSK'), ' = BPSK rotated by 90°) ', statusOf(def.modulation),
+        def.modulation.note ? h('div', { class: 'small muted' }, def.modulation.note) : null));
     }
+    if (name === 'L-SIG') {
+      extra.push(h('div', null, term('LENGTH'), ` = ${a.lsig.LENGTH}`, a.lsig.rule === 'psdu' ? ' (the PSDU length)'
+        : ` = ceil((TXTIME − 20 µs)/4 µs)·3 − 3 — a legacy receiver reading this at 6 Mb/s defers for the whole PPDU`, ' ', statusOf(a.lsig.rule === 'psdu' ? D.lsig.nonHtLength : D.lsig.spoofRule)));
+    }
+    if (it.toneplan) {
+      const n20 = a.cfg.bw / 20;
+      extra.push(h('div', null, 'Subcarrier plan: ', it.toneplan === 'legacy'
+        ? (n20 > 1 ? [`pre-HT — the 20 MHz Non-HT plan sent ${n20} times, once per 20 MHz subchannel, each with its own `, term('Phase rotation', 'phase rotation')] : 'pre-HT — the 20 MHz Non-HT plan')
+        : `${C.generation(a.cfg.gen).label} Data-field plan (${a.dataTones.N_ST} subcarriers at ${a.cfg.bw} MHz)`));
+    }
+    if (it.count > 1) extra.push(h('div', null, `${it.count} symbols: `, term('N_LTF'), ` for N_SS = ${a.cfg.nss}`));
     return h('div', { class: 'info-card' },
       h('h3', null, term(t ? (D.terms[name] ? name : 'Data field') : name, name), ' ',
         h('span', { class: 'mono muted' }, it.count > 1 ? `${it.count} × ${V.us(it.each_ns)} µs` : `${V.us(it.dur_ns)} µs`), ' ',

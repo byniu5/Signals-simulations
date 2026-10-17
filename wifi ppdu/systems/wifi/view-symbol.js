@@ -95,7 +95,8 @@
     // --- header, stepper, explanation
     const step = (d) => opts.onIndex(Math.min(nSym, Math.max(1, index + d)));
     const head = h('div', { class: 'view-head' },
-      h('h2', null, 'One ', term('OFDM symbol', 'OFDM symbol'), ' in time — Data field'),
+      h('h2', null, 'One ', term('OFDM symbol', 'OFDM symbol'), ' in time — Data field',
+        a.cfg.nss > 1 ? h('span', { class: 'muted small' }, ' · ', term('Spatial stream', 'spatial stream'), ` 1 of ${a.cfg.nss}`) : null),
       h('div', { class: 'chips' },
         h('button', { type: 'button', onclick: () => step(-1), disabled: index <= 1, 'aria-label': 'Previous symbol' }, '◀'),
         h('span', { class: 'chip mono' }, `symbol ${index} of ${nSym}`),

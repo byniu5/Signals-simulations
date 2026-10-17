@@ -12,6 +12,17 @@
   const V = root.WifiViews;
 
   const W = 800, LEFT = 14, RIGHT = 14, PW = W - LEFT - RIGHT;
+  /** Rough width of a 12 px label (for deciding whether it fits). */
+  const textWidth = (str) => str.length * 6.8;
+  /** Centre a label over its box, but keep it inside the drawing at both edges. */
+  const labelAnchor = (x, w, str) => {
+    const half = (textWidth(str) * 11) / 12 / 2;
+    if (x + w / 2 + half > W - 2) return { x: x + w, 'text-anchor': 'end' };
+    if (x + w / 2 - half < 2) return { x, 'text-anchor': 'start' };
+    return { x: x + w / 2, 'text-anchor': 'middle' };
+  };
+  /* glossary entries for the no-transmission items that close a PPDU */
+  const GAP_TERM = { 'Signal extension': 'Signal extension', 'Short GI rounding': 'Short GI' };
   const Y1 = 46, H1 = 24, Y2 = 150, H2 = 46;
 
   /** @param opts { selected, symbolIndex, onField(name), onSymbol(index, rect) } */
@@ -32,7 +43,7 @@
         s('title', null, `${it.name}: ${V.us(it.dur_ns)} µs (from ${V.us(it.start_ns)} µs)`));
       if (it.kind !== 'gap') V.clickable(r, it.name, () => opts.onField(it.name));
       svg.append(r);
-      if (w > 46) svg.append(s('text', { x: x0 + w / 2, y: Y1 + 16, 'text-anchor': 'middle', fill: '#04131c', 'font-weight': 600, 'pointer-events': 'none' }, it.name));
+      if (w > textWidth(it.name) + 6) svg.append(s('text', { x: x0 + w / 2, y: Y1 + 16, 'text-anchor': 'middle', fill: '#04131c', 'font-weight': 600, 'pointer-events': 'none' }, it.name));
     }
     const stepUs = V.niceStep(total / 1000, 8);
     for (let t = 0; t <= total / 1000 + 1e-9; t += stepUs) {
@@ -50,13 +61,20 @@
     };
     const fixedWidth = (it) => (it.kind === 'gap' ? 64 : it.kind === 'pe' ? 56 : Math.min(130, 56 + (it.dur_ns / 1000) * 6 * (it.count ? 0.6 : 1)));
     const others = items.filter((it) => it.kind !== 'data');
-    const dataWidth = PW - others.reduce((acc, it) => acc + fixedWidth(it) + 4, 0) - 4;
+    const DATA_MIN = 230;
+    const othersWidth = others.reduce((acc, it) => acc + fixedWidth(it), 0);
+    const scale = Math.min(1, (PW - DATA_MIN - 4 * items.length) / othersWidth);
+    const dataWidth = PW - othersWidth * scale - 4 * (items.length - 1);
     svg.append(s('text', { x: LEFT, y: Y2 - 30, class: 'muted' }, 'Field structure (expanded, not to scale) — click a field or a Data symbol'));
 
     let x = LEFT;
     const rowItems = [];
+    items.forEach((it, i) => { it.labelLevel = 0; it.index = i; });
     for (const it of items) {
-      const w = it.kind === 'data' ? dataWidth : fixedWidth(it);
+      const w = it.kind === 'data' ? dataWidth : fixedWidth(it) * scale;
+      // stagger the name of a field that is narrower than its label, so neighbours do not overlap
+      const afterData = it.index > 0 && items[it.index - 1].kind === 'data';
+      if (it.kind !== 'data' && w < textWidth(it.name)) it.labelLevel = it.index % 2 || afterData ? 1 : 0;
       rowItems.push({ it, x, w });
       // connector from the true-scale bar
       const a0 = tx(it.start_ns), a1 = tx(it.start_ns + it.dur_ns);
@@ -94,7 +112,8 @@
       });
     }
     svg.append(
-      s('text', { x: x + w / 2, y: Y2 - 6, 'text-anchor': 'middle', 'font-weight': 600, 'data-term': isGap && it.name !== 'Signal extension' ? 'TXTIME' : it.name }, it.name),
+      s('text', Object.assign({ y: Y2 - 6 - 14 * (it.labelLevel || 0), 'font-weight': 600, 'font-size': w < textWidth(it.name) ? 11 : 12,
+        'data-term': GAP_TERM[it.name] || it.name }, labelAnchor(x, w, it.name)), it.name),
       s('text', { x: x + w / 2, y: Y2 + H2 + 16, 'text-anchor': 'middle', class: 'muted mono' },
         it.count > 1 ? `${it.count} × ${V.us(it.each_ns)} µs` : `${V.us(it.dur_ns)} µs`));
     if (st && st.shortTrainingSymbols) svg.append(s('text', { x: x + w / 2, y: Y2 + H2 + 31, 'text-anchor': 'middle', class: 'muted small' }, `${st.shortTrainingSymbols} × ${st.each} µs`));
@@ -125,7 +144,8 @@
       xx += sw;
     }
     svg.append(
-      s('text', { x: x + w / 2, y: Y2 - 6, 'text-anchor': 'middle', 'font-weight': 600, 'data-term': 'Data field' }, `Data field: `, ...svgSym('N_SYM'), ` = ${n} OFDM symbols`),
+      s('text', { x: x + w / 2, y: Y2 - 6, 'text-anchor': 'middle', 'font-weight': 600, 'data-term': 'Data field' },
+        w < 300 ? 'Data: ' : 'Data field: ', ...svgSym('N_SYM'), ` = ${n}`, w < 300 ? '' : ' OFDM symbols'),
       s('text', { x: x + w / 2, y: Y2 + H2 + 31, 'text-anchor': 'middle', class: 'muted mono' }, `${n} × ${V.us(it.each_ns)} µs = ${V.us(it.dur_ns)} µs`));
   }
 
@@ -133,10 +153,11 @@
   function dataBits(a) {
     const sy = a.symbols, p = a.params;
     if (sy.coding !== 'BCC') return h('div');
+    const pf = root.WifiCalc.generation(a.cfg.gen).payloadField;
     const total = sy.N_SYM * p.N_DBPS;
     const parts = [
       { label: 'SERVICE', term: 'SERVICE field', bits: sy.N_service, color: '#c084fc' },
-      { label: 'PSDU', term: 'PSDU', bits: sy.payloadBits, color: '#38bdf8' },
+      { label: pf.name === 'APEP_LENGTH' ? 'APEP' : 'PSDU', term: pf.name === 'APEP_LENGTH' ? 'APEP_LENGTH' : 'PSDU', bits: sy.payloadBits, color: '#38bdf8' },
       { label: 'tail', term: 'Tail bits', bits: sy.N_tail, color: '#fbbf24' },
       { label: 'pad', term: 'Pad bits', bits: sy.N_PAD, color: '#64748b' },
     ];
@@ -148,7 +169,7 @@
       h('h3', null, 'Bits of the ', term('Data field', 'Data field')),
       bar,
       h('div', { class: 'formula' },
-        term('N_SYM'), ` = ⌈(${sy.N_service} + 8·`, term('LENGTH'), ` + ${sy.N_tail / (p.N_ES || 1)}·`, term('N_ES'), ') / ', term('N_DBPS'), '⌉ = ⌈(',
+        term('N_SYM'), ` = ⌈(${sy.N_service} + 8·`, term(pf.term, pf.name), ` + ${sy.N_tail / (p.N_ES || 1)}·`, term('N_ES'), ') / ', term('N_DBPS'), '⌉ = ⌈(',
         `${sy.N_service} + ${sy.payloadBits} + ${sy.N_tail}) / ${p.N_DBPS}⌉ = ⌈${sy.N_service + sy.payloadBits + sy.N_tail} / ${p.N_DBPS}⌉ = ${sy.N_SYM}`),
       h('div', { class: 'formula' }, term('N_PAD'), ` = ${sy.N_SYM} × ${p.N_DBPS} − ${sy.N_service + sy.payloadBits + sy.N_tail} = ${sy.N_PAD} bits`));
   }

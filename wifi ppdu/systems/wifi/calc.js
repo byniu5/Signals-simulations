@@ -162,8 +162,11 @@
       return cfg.gen === 'HT' ? 8 * (cfg.nss - 1) + cfg.mcs : cfg.mcs;
     }
 
-    /** Number of BCC encoders N_ES (Non-HT, HT, VHT). */
-    function numEncoders(cfg, rateMbps) {
+    /**
+     * Number of BCC encoders N_ES (Non-HT, HT, VHT): N_ES = ceil(N_DBPS / ndbpsPerEncoder),
+     * unless the data file lists an explicit override for this (bandwidth, N_SS, MCS).
+     */
+    function numEncoders(cfg, N_DBPS) {
       if (cfg.gen === 'nonHT') return 1;
       const g = generation(cfg.gen);
       const enc = use(g.encoders, `generations.${cfg.gen}.encoders`);
@@ -171,7 +174,7 @@
         const x = enc.exceptions.find((e) => e.bw === cfg.bw && e.nss === cfg.nss && e.mcs === cfg.mcs);
         if (x) return x.N_ES;
       }
-      return Math.max(1, Math.ceil(rateMbps / enc.maxMbpsPerEncoder[cfg.gi] - 1e-9));
+      return Math.max(1, Math.ceil(N_DBPS / enc.ndbpsPerEncoder));
     }
 
     /**
@@ -212,7 +215,7 @@
         N_SD: tones.N_SD, N_SP: tones.N_SP, N_ST: tones.N_ST,
         N_BPSCS, R, N_SS, N_CBPS, N_DBPS, N_DBPS_exact, N_DBPS_rule, fractionalN_DBPS,
         T_DFT_ns, T_GI_ns, T_SYM_ns, rateMbps, exactRateMbps,
-        N_ES: g.coding === 'BCC' ? numEncoders(cfg, rateMbps) : null,
+        N_ES: g.coding === 'BCC' ? numEncoders(cfg, N_DBPS) : null,
       };
     }
 
@@ -354,12 +357,29 @@
         const sym4 = ns(use(g.txtime.legacySymbol, `generations.${cfg.gen}.txtime.legacySymbol`));
         const data = items.find((i) => i.kind === 'data');
         const rounded = Math.ceil(data.dur_ns / sym4) * sym4;
-        if (rounded > data.dur_ns) push({ name: 'Short-GI alignment', kind: 'gap', dur_ns: rounded - data.dur_ns });
+        if (rounded > data.dur_ns) push({ name: 'Short GI rounding', kind: 'gap', dur_ns: rounded - data.dur_ns });
       }
       const sigExt = use(D.interframe.signalExtension, 'interframe.signalExtension')[cfg.band] || 0;
       if (sigExt > 0) push({ name: 'Signal extension', kind: 'gap', dur_ns: ns(sigExt) });
 
-      return { items, onAir_ns, txtime_ns: t };
+      return { items, onAir_ns, txtime_ns: t, signalExtension_ns: ns(sigExt) };
+    }
+
+    /**
+     * L-SIG LENGTH. Non-HT: the PSDU length. HT / VHT / HE: chosen so that a legacy
+     * receiver, assuming 3 octets per 4 µs symbol (6 Mb/s), computes the real duration:
+     *   LENGTH = ceil((TXTIME − SignalExtension − 20 µs) / 4 µs) · 3 − 3
+     */
+    function lsigLength(cfg, tl) {
+      const maxLength = use(D.lsig.maxLength, 'lsig.maxLength');
+      if (cfg.gen === 'nonHT') {
+        use(D.lsig.nonHtLength, 'lsig.nonHtLength');
+        return { LENGTH: cfg.payload, rule: 'psdu', maxLength, valid: cfg.payload <= maxLength };
+      }
+      const r = use(D.lsig.spoofRule, 'lsig.spoofRule');
+      const t_us = (tl.txtime_ns - tl.signalExtension_ns) / 1000;
+      const LENGTH = Math.ceil((t_us - r.legacyPreamble) / r.symbol - 1e-9) * r.octetsPerSymbol - r.subtract;
+      return { LENGTH, rule: 'spoof', maxLength, valid: LENGTH <= maxLength };
     }
 
     /* ======================================================================
@@ -401,7 +421,9 @@
       if (!m) m = o.mcs[0];
       cfg.mcs = m.mcs; cfg.mod = m.mod; cfg.R = m.R;
 
-      cfg.payload = Math.max(1, Math.round(Number(cfg.payload) || 1));
+      const g = generation(cfg.gen);
+      const maxPayload = g.maxPsduOctets ? val(g.maxPsduOctets) : Infinity;
+      cfg.payload = Math.min(maxPayload, Math.max(1, Math.round(Number(cfg.payload) || 1)));
       if (cfg.gen === 'HE') {
         const pads = val(generation('HE').packetExtension.nominalPacketPadding);
         if (!pads.includes(cfg.nominalPadding)) cfg.nominalPadding = pads[pads.length - 1];
@@ -421,6 +443,8 @@
         const rateDeps = [...deps].filter((d) => !d.endsWith('.encoders'));
         const sym = dataSymbols(cfg, p);
         const tl = timeline(cfg, p, sym);
+        const lsig = lsigLength(cfg, tl);
+        const maxPpdu_ns = cfg.gen === 'nonHT' ? null : ns(use(D.lsig.maxPpdu, 'lsig.maxPpdu'));
         const airtimeDeps = [...deps];
         return {
           cfg, notes, excluded,
@@ -429,6 +453,8 @@
             airtime: airtimeDeps,          // ... and the TXTIME / N_SYM (superset)
             ldpcDependent: airtimeDeps.some((d) => d.startsWith('ldpc.')),
           },
+          lsig,
+          maxPpdu: { limit_ns: maxPpdu_ns, exceeded: maxPpdu_ns !== null && tl.txtime_ns - tl.signalExtension_ns > maxPpdu_ns },
           mcsIndex: displayMcs(cfg),
           params: p,
           symbols: sym,
@@ -458,7 +484,7 @@
     return {
       data: D, val, ns,
       generation, options, normalize, analyze, runChecks, toneplanOwner,
-      dataToneMap, legacyToneMap, symbolParams, dataSymbols, ldpcParams, timeline, exclusion, displayMcs,
+      dataToneMap, legacyToneMap, symbolParams, dataSymbols, ldpcParams, timeline, lsigLength, exclusion, displayMcs,
     };
   }
 
