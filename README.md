@@ -10,6 +10,5 @@ Open `index.html` – the hub page – to browse them. It works straight from di
 1. Create a folder with an `index.html` (link back with `<a href="../index.html">`).
 2. Add an entry to the `SIMULATIONS` routing table near the top of the script in the root `index.html`.
 
-| Simulation | Folder |
-| --- | --- |
-| Beam steering with a 4-element phased array | `beam forming/` |
+| Simulations site link |
+https://signals-simulations.netlify.app/
