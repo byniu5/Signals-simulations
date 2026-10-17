@@ -81,11 +81,17 @@
       else if (nav.level === 'subcarrier' && V.subcarrier) el.append(V.subcarrier(a, nav, { navigate }));
       else if (nav.view === 'time') el.append(V.symbol(a, { index: nav.sym,
         onIndex: (i) => navigate({ sym: i }, null, true),
-        onZoomIn: (r) => navigate({ view: 'spectrum' }, r) }));
-      else el.append(V.frequency(a, { field: nav.field, onField: (f) => navigate({ field: f }, null, true),
-        ru: state.ru, onRu: (size) => { state.ru = size; stage.show(render); },
-        windowStart: state.mapWindow, onWindow: (k) => { state.mapWindow = k; stage.show(render); },
-        onSubcarrier: V.subcarrier ? (k, r) => navigate({ level: 'subcarrier', sc: k }, r) : null }));
+        onZoomIn: (r) => navigate({ view: 'spectrum' }, r),
+        onSubcarrier: (k, r) => navigate({ level: 'subcarrier', sc: k }, r) }));
+      else {
+        const preview = nav.field === 'data' ? V.timePreview(a, nav.sym) : null;
+        el.append(V.frequency(a, { field: nav.field, onField: (f) => navigate({ field: f }, null, true),
+          ru: state.ru, onRu: (size) => { state.ru = size; stage.show(render); },
+          windowStart: state.mapWindow, onWindow: (k) => { state.mapWindow = k; stage.show(render); },
+          onSubcarrier: (k, r) => navigate({ level: 'subcarrier', sc: k }, r),
+          onHoverK: preview ? (k) => preview.show(k) : null }));
+        if (preview) el.append(preview.el);
+      }
     };
     // where the inner level sits inside the outer view (target of the zoom-out animation)
     const anchorIn = (outer, inner) => (outer.level === 'ppdu'

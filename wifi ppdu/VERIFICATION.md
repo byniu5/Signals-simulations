@@ -9,9 +9,9 @@ user; *supported* — at least two independent public sources, standard text not
 checked values; *unverified* — everything else. Sources are counted by their `origin` (several ns-3 files are one
 origin); `plan` and `arith` are cross-checks and never count as sources. The unit tests enforce these rules.
 
-- Status-bearing entries: **139** — unverified **35** · standard-checked **0** · supported **73** · derived **31**
+- Status-bearing entries: **141** — unverified **36** · standard-checked **0** · supported **74** · derived **31**
 
-## Unverified — please check against the standard (35)
+## Unverified — please check against the standard (36)
 
 Fewer than two independent public sources, or an input of a derivation is unverified. Shown as a warning in the app.
 
@@ -44,6 +44,7 @@ Fewer than two independent public sources, or an input of a derivation is unveri
 | `bitLevel.puncturing` | {"1/2":[[1],[1]],"2/3":[[1,1],[1,0]],"3/4":[[1,1,0],[1,0,1]],"5/6":[[1,1,0,1,0],[1,0,1,… | inet-ofdm, plan | Rows: output A and output B; 1 = sent, 0 = removed (stolen). One open-source origin only. |
 | `bitLevel.interleaverSize20MHz` | {"HT":{"columns":13,"rowsPerBpscs":4},"VHT":{"columns":13,"rowsPerBpscs":4},"HE":{"colu… | plan | One spatial stream, 20 MHz (52 / 52 / 234 data subcarriers = columns × rows / N_BPSCS). Plan values only; for the 242-tone RU a patent summary (pat-he-interleaver) gives different numbers. |
 | `bitLevel.grayMapping` | I from the first half of each N_BPSCS bit group, Q from the second half (BPSK: I only).… | inet-ofdm, plan | Matches the INET 16-QAM table; one origin. |
+| `bitLevel.constellationMappingHigh` | {"256-QAM":{"I":{"1000":15,"1001":13,"1010":9,"1011":11,"1100":1,"1101":3,"1110":7,"111… | plan | Same Gray rule extended to 4 and 5 bits per axis. INET's 256/1024-QAM tables use another bit layout (Q bits first, generated from patent WO2003058904), so no second source agrees. |
 | `interframe.bands.5.SIFS` | 16 µs | wiki-sifs, wiki-difs, plan |  |
 | `interframe.bands.5.aSlotTime` | {"short":9} µs | wiki-difs, plan |  |
 | `interframe.bands.6.SIFS` | 16 µs | wiki-sifs, wiki-difs, plan | assumed same as 5 GHz |
@@ -59,7 +60,7 @@ Read in the standard text by the user.
 
 _None._
 
-## Supported (secondary sources) (73)
+## Supported (secondary sources) (74)
 
 At least two independent public sources (open-source implementation, IEEE submission, patent, vendor documentation), or classified as supported by the reviewer (source `review-3`). The standard text itself was not read.
 
@@ -134,6 +135,7 @@ At least two independent public sources (open-source implementation, IEEE submis
 | `bitLevel.convolutionalCode` | {"constraintLength":7,"generatorsOctal":["133","171"]} | inet-ofdm, ubc-elex7860, plan | Rate-1/2 mother code: output A from g0 = 133 (octal), output B from g1 = 171 (octal). |
 | `bitLevel.interleaverRule` | ["i = N_ROW·(k mod N_COL) + floor(k / N_COL)","j = s·floor(i / s) + (i + N_CBPS − floor… | inet-ofdm, pat-interleaver-11a, plan | Both sources state the Clause 17 form (N_COL = 16, N_ROW = N_CBPS / 16). Later PHYs reuse the two permutations with other array sizes (one stream: no frequency rotation). |
 | `bitLevel.interleaverColumnsNonHT` | 16 | inet-ofdm, pat-interleaver-11a, plan |  |
+| `bitLevel.constellationMapping` | {"BPSK":{"I":{"0":-1,"1":1}},"QPSK":{"I":{"0":-1,"1":1},"Q":{"0":-1,"1":1}},"16-QAM":{"… | gr-ieee80211, inet-ofdm, plan | Checked point by point: gr-ieee802-11 (BPSK, QPSK, 16-QAM, 64-QAM) and INET (same four) give the same points when the first bit is the index LSB. BPSK: 0 → −1, 1 → +1. |
 | `interframe.signalExtension` | {"5":0,"6":0,"2.4":6} µs | ns3-ofdm, ns3-txdur, plan, pat-lsig-length | OFDM PPDUs in the 2.4 GHz band end with a 6 µs signal extension (no transmission) so that the receiver has time to finish decoding before SIFS. |
 | `generations.VHT.exclusions[20 MHz, MCS 9, NSS 1/2/4]` | excluded | ieee-11-0577, ns3-vht, review-3 | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
 | `generations.VHT.exclusions[80 MHz, MCS 6, NSS 3]` | excluded | ieee-11-0577, ns3-vht, review-3 | supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read |
@@ -271,4 +273,5 @@ Arithmetic from standard-checked, supported or derived values; the inputs are li
 - **ubc-elex7860** (UBC course) — [UBC ELEX 7860 course solution quoting 802.11a: rate-1/2 convolutional code, K = 7, g0 = 133 and g1 = 171 (octal), punctured to 2/3 and 3/4](https://people.ece.ubc.ca/~edc/7860.jan2022/midterm1sol.pdf)
 - **pat-interleaver-11a** (US 6934901) — [US patents 6934901 / RE44848 (802.11a block interleaver: 16 columns, two permutations, s = max(N_BPSC/2, 1))](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/6934901)
 - **pat-he-interleaver** (US 10110406) — [US patent 10110406 (HE BCC interleaver parameters per RU size; a search summary quotes N_COL 13 / N_ROW 9 for the 242-tone RU — conflicts with the plan value)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10110406)
+- **gr-ieee80211** (gr-ieee802-11) — [gr-ieee802-11 (GNU Radio IEEE 802.11a/g/p transceiver, open source), lib/constellations_impl.cc: BPSK, QPSK, 16-QAM, 64-QAM point tables (index LSB = first bit)](https://github.com/bastibl/gr-ieee802-11/blob/maint-3.10/lib/constellations_impl.cc)
 - **tub-ofdm** (TU Berlin) — [TU Berlin telecom exercises (802.11ac non-null subcarriers: 56/64, 114/128, 242/256, 484/512)](https://platform.commit.tu-berlin.de/en/book/telecom/chapter/ch25/section/exercises)

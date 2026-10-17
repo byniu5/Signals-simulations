@@ -15,7 +15,8 @@
   /**
    * @param a     analysis from WifiCalc.analyze
    * @param opts  { field: 'data' | 'legacy', onField(field), ru: RU size | null, onRu(size),
-   *                windowStart: first k of the zoom window | null, onWindow(k) }
+   *                windowStart: first k of the zoom window | null, onWindow(k),
+   *                onSubcarrier(k, rect): zoom into one subcarrier, onHoverK(k | null): linked brushing }
    */
   V.frequency = function (a, opts) {
     const C = root.WifiCalc;
@@ -188,7 +189,22 @@
           ltf ? ['. The ', term('HE-LTF type', `${ltf.ltf} HE-LTF`), ltfStep > 1 ? ` uses every ${ltfStep === 2 ? 'second' : ltfStep === 4 ? 'fourth' : ltfStep + 'th'} subcarrier, so its symbol repeats after ${V.us(ltf.symbol_ns)} µs and only that is sent` : ' uses every subcarrier for the full symbol'] : '',
           '. Click the OFDM symbol step above to see the same symbol in time.'));
 
-    const zoom = needWindow ? zoomWindow(map, k0, WIN, opts) : null;
+    // Data-field plan: hover reports the subcarrier (linked brushing), click zooms into it
+    if (field === 'data' && (opts.onHoverK || opts.onSubcarrier)) {
+      const kAt = (ev) => {
+        const r = svg.getBoundingClientRect();
+        return Math.max(-fft / 2, Math.min(fft / 2 - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px - fft / 2 - 0.5)));
+      };
+      if (opts.onHoverK) {
+        svg.addEventListener('mousemove', (ev) => opts.onHoverK(kAt(ev)));
+        svg.addEventListener('mouseleave', () => opts.onHoverK(null));
+      }
+      if (opts.onSubcarrier && !needWindow) {
+        svg.style.cursor = 'zoom-in';
+        svg.addEventListener('click', (ev) => opts.onSubcarrier(kAt(ev), { left: ev.clientX - 6, top: ev.clientY - 30, width: 12, height: 60 }));
+      }
+    }
+    const zoom = needWindow ? zoomWindow(map, k0, WIN, field === 'data' ? opts : Object.assign({}, opts, { onSubcarrier: null, onHoverK: null })) : null;
     return h('div', null, head, chips, ruBar, h('div', { style: { margin: '8px 0' } }, svg), zoom, facts, ruNote, explain);
   };
 
@@ -220,6 +236,12 @@
     for (const t of tones) if (t.kind === 'pilot') svg.append(s('text', { x: X(t.k), y: B - 90, 'text-anchor': 'middle', class: 'mono', fill: V.KIND.pilot.color }, V.signed(t.k, 0)));
     svg.append(s('text', { x: LEFT, y: H - 4, class: 'muted small' }, `${V.signed((k0 * dfKHz) / 1000, 4)} MHz`),
       s('text', { x: W - RIGHT, y: H - 4, 'text-anchor': 'end', class: 'muted small' }, `${V.signed(((k0 + WIN - 1) * dfKHz) / 1000, 4)} MHz`));
+    const kAt = (ev) => {
+      const r = svg.getBoundingClientRect();
+      return Math.max(k0, Math.min(k0 + WIN - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px + k0 - 0.5)));
+    };
+    if (opts.onHoverK) { svg.addEventListener('mousemove', (ev) => opts.onHoverK(kAt(ev))); svg.addEventListener('mouseleave', () => opts.onHoverK(null)); }
+    if (opts.onSubcarrier) { svg.style.cursor = 'zoom-in'; svg.addEventListener('click', (ev) => opts.onSubcarrier(kAt(ev), { left: ev.clientX - 6, top: ev.clientY - 30, width: 12, height: 60 })); }
     const move = (d) => opts.onWindow && opts.onWindow(Math.max(-fft / 2, Math.min(fft / 2 - WIN, k0 + d)));
     return h('div', { class: 'zoom-window' },
       h('div', { class: 'view-head' },

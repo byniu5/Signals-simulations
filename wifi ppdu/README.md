@@ -8,6 +8,10 @@ subcarrier map (Data field and pre-HT / pre-HE plans, plus an RU overlay for HE)
 RL-SIG, HE-LTF type, LDPC pre-FEC padding with the a-factor, packet extension), output panel, check table and
 glossary.
 
+PPDU view levels (breadcrumb, context strips, URL hash, ← → / Esc): PPDU > Data field > OFDM symbol (Time | Spectrum)
+> Subcarrier — the wave of one subcarrier (exactly k cycles, the GI as its continuation), its point and bits (toggles),
+"build the symbol" from its subcarriers, and an orthogonality demo.
+
 Milestone (e) adds two modes:
 - **Transmitter → receiver:** a real bit-level chain for one 20 MHz stream (scrambler, BCC encoder + puncturing,
   interleaver, Gray mapping, IFFT + cyclic prefix → echo, frequency offset, noise → FFT, channel estimate, equalizer
@@ -30,6 +34,7 @@ index.html, css/                  page shell
 core/                             system-agnostic: registry, DOM/SVG helpers, tooltips + glossary, zoom, FFT
 systems/wifi/standards-data.js    every standard-derived number and glossary term, with status + evidence (pure data)
 systems/wifi/nav.js               where the user is (PPDU > Data field > symbol > subcarrier), URL hash, clamping
+systems/wifi/wave.js              one symbol in time: IFFT waveform, one subcarrier's wave, partial sums (same grid)
 systems/wifi/chain.js             bit-level transmitter → channel → receiver (BCC path), pure functions
 systems/wifi/calc.js              pure calculators: tone maps, N_CBPS/N_DBPS, N_SYM (BCC / HE LDPC), TXTIME,
                                   and which unverified data each result depends on
@@ -38,6 +43,7 @@ tests/wifi-calc.test.js           check table, ns-3 TXTIME vectors with named ex
 tests/vectors/ns3-txtime.js       ns-3 vectors (verbatim) + named exceptions with sources
 tests/ui-terms.test.js            glossary coverage, no cellular terms, core independent of the Wi-Fi module
 tests/wifi-nav.test.js            URL hash round trip, symbol / subcarrier index clamping after config changes
+tests/wifi-wave.test.js           sum of all subcarriers = symbol waveform, k cycles + seamless prefix, mapping tables
 tests/wifi-chain.test.js          scrambler vector, BCC impulse response, puncturing, interleaver, Gray mapping, end-to-end
 tools/verification-report.js      regenerates VERIFICATION.md from the data file
 VERIFICATION.md                   what is verified, what is not, and the sources used
@@ -48,7 +54,7 @@ Another radio system can be added later as `systems/<name>/`, without touching `
 ## Commands (from the repository root)
 
 ```
-node --test "wifi ppdu/tests/wifi-calc.test.js" "wifi ppdu/tests/ui-terms.test.js" "wifi ppdu/tests/wifi-chain.test.js" "wifi ppdu/tests/wifi-nav.test.js"
+node --test "wifi ppdu/tests/wifi-calc.test.js" "wifi ppdu/tests/ui-terms.test.js" "wifi ppdu/tests/wifi-chain.test.js" "wifi ppdu/tests/wifi-nav.test.js" "wifi ppdu/tests/wifi-wave.test.js"
 node "wifi ppdu/tools/verification-report.js"
 ```
 

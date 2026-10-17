@@ -13,32 +13,22 @@
 
   const W = 800, LEFT = 40, RIGHT = 16, PW = W - LEFT - RIGHT, MID = 150, AMP = 74;
 
+  const Wv = () => root.WifiWave;
+
   /** Frequency-domain values of one Data-field OFDM symbol (deterministic per configuration and index). */
-  V.symbolValues = function (a, index) {
-    const p = a.params;
-    const rand = Dsp.rng(Dsp.seedFrom(JSON.stringify([a.cfg.gen, a.cfg.bw, a.cfg.mod, a.cfg.nss, index])));
-    const pts = Dsp.constellation(p.N_BPSCS);
-    return a.dataTones.tones.map((t) => ({
-      k: t.k, kind: t.kind,
-      z: t.kind === 'data' ? pts[Math.floor(rand() * pts.length)] : t.kind === 'pilot' ? { re: 1, im: 0 } : null,
-    }));
-  };
+  V.symbolValues = (a, index) => Wv().symbolValues(a, index);
 
   /**
-   * @param opts { index (1..N_SYM), onIndex(i), onZoomIn(rect) }
+   * @param opts { index (1..N_SYM), onIndex(i), onZoomIn(rect), onSubcarrier(k, rect) }
    */
   V.symbol = function (a, opts) {
     const p = a.params, N = p.N_FFT, nSym = a.symbols.N_SYM;
     const index = Math.min(Math.max(1, opts.index || 1), nSym);
     const values = V.symbolValues(a, index);
 
-    // IFFT with M-times oversampling: bin k of an N·M-point IFFT, negative k wrap around.
-    const M = Math.max(1, Math.ceil(1024 / N)), L = N * M;
-    const re = new Float64Array(L), im = new Float64Array(L);
-    for (const v of values) if (v.z) { const i = (v.k + L) % L; re[i] = v.z.re; im[i] = v.z.im; }
-    Dsp.fft(re, im, true);
-    const cp = Math.round((L * p.T_GI_ns) / p.T_DFT_ns);             // samples in the guard interval
-    const wave = [...Array.from(re.slice(L - cp)), ...Array.from(re)];  // cyclic prefix + useful part
+    // IFFT with M-times oversampling (wave.js): bin k of an N·M-point IFFT, cyclic prefix in front
+    const g = Wv().grid(a);
+    const wave = Array.from(Wv().symbolWaveform(g, values).re);
     const peak = wave.reduce((m, x) => Math.max(m, Math.abs(x)), 0) || 1;
 
     const T = p.T_SYM_ns;
@@ -141,6 +131,80 @@
       h('p', null, 'Why: echoes shorter than the guard interval only smear into the prefix, and inside the receiver\'s FFT window the channel then acts on each subcarrier as a single complex gain — corrected with one division per subcarrier.'),
       h('p', { class: 'muted small' }, 'Illustration: the constellation points are random (same for the same symbol index); pilots are drawn as +1 although the standard changes their sign from symbol to symbol. Click the blue useful part to zoom into its subcarriers.'));
 
-    return h('div', null, head, svg, h('div', { class: 'symbol-grid' }, h('div', null, facts, explain), side));
+    // linked spectrum strip: hover a subcarrier to overlay its own wave (true scale), click to zoom into it
+    const strip = toneStrip(a, values, {
+      onHover: (k) => {
+        overlay.replaceChildren();
+        if (k === null) { stripLabel.textContent = 'hover a subcarrier to see its wave inside the symbol · click to zoom in'; return; }
+        const v = values.find((x) => x.k === k);
+        const tw = Wv().toneWave(g, k, v && v.z);
+        const step = Math.max(1, Math.floor(tw.re.length / 1500));
+        const pts = [];
+        for (let i = 0; i < tw.re.length; i += step) pts.push(`${(LEFT + (i / (tw.re.length - 1)) * PW).toFixed(1)},${(MID - (tw.re[i] / peak) * AMP).toFixed(1)}`);
+        overlay.append(s('polyline', { points: pts.join(' '), fill: 'none', stroke: '#fbbf24', 'stroke-width': 2, opacity: 0.9 }));
+        stripLabel.textContent = `k = ${V.signed(k, 0)} (${v ? V.KIND[v.kind].label : ''}) — its wave in amber, same scale as the symbol: ${v && v.z ? `${Math.abs(k)} cycles in ${V.us(p.T_DFT_ns)} µs` : 'zero amplitude'}`;
+      },
+      onClick: opts.onSubcarrier,
+    });
+    const overlay = s('g', { 'pointer-events': 'none' });
+    svg.append(overlay);
+    const stripLabel = h('div', { class: 'small muted strip-label' }, 'hover a subcarrier to see its wave inside the symbol · click to zoom in');
+    return h('div', null, head, svg, h('div', { class: 'tone-strip' }, strip, stripLabel), h('div', { class: 'symbol-grid' }, h('div', null, facts, explain), side));
   };
+
+  /**
+   * Compact time view of symbol `index` for the Spectrum view: show(k) overlays subcarrier k's own wave
+   * (amber, same scale) — linked brushing from the subcarrier map.
+   */
+  V.timePreview = function (a, index) {
+    const g = Wv().grid(a), values = Wv().symbolValues(a, index);
+    const full = Wv().symbolWaveform(g, values).re, len = full.length;
+    const H = 120, MID = 60, AMP = 46;
+    const peak = full.reduce((m, x) => Math.max(m, Math.abs(x)), 0) || 1;
+    const step = Math.max(1, Math.floor(len / 1400));
+    const path = (arr) => { const pts = []; for (let i = 0; i < len; i += step) pts.push(`${(LEFT + (i / (len - 1)) * PW).toFixed(1)},${(MID - (arr[i] / peak) * AMP).toFixed(1)}`); return pts.join(' '); };
+    const tone = s('polyline', { fill: 'none', stroke: '#fbbf24', 'stroke-width': 2 });
+    const svg = s('svg', { class: 'diagram', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'This symbol in time' },
+      s('rect', { x: LEFT, y: 8, width: (g.cp / len) * PW, height: H - 16, fill: V.GI, opacity: 0.14 }),
+      s('line', { x1: LEFT, x2: W - RIGHT, y1: MID, y2: MID, stroke: '#2b3a57' }),
+      s('polyline', { points: path(full), fill: 'none', stroke: '#38bdf8', 'stroke-width': 1, opacity: 0.55 }), tone,
+      s('text', { x: LEFT - 8, y: MID + 4, 'text-anchor': 'end', class: 'muted' }, 'Re'));
+    const label = h('div', { class: 'small muted strip-label' }, `Symbol ${index} in time (blue). Hover a subcarrier above to overlay its wave; click it to zoom in.`);
+    return {
+      el: h('div', { class: 'time-preview' }, h('h3', null, 'The same symbol in time'), svg, label),
+      show(k) {
+        if (k === null) { tone.setAttribute('points', ''); label.textContent = `Symbol ${index} in time (blue). Hover a subcarrier above to overlay its wave; click it to zoom in.`; return; }
+        const v = values.find((x) => x.k === k);
+        tone.setAttribute('points', path(Wv().toneWave(g, k, v && v.z).re));
+        label.textContent = `k = ${V.signed(k, 0)} (${v ? V.KIND[v.kind].label : ''}): its wave in amber, same scale — ${v && v.z ? `${Math.abs(k)} cycles in ${V.us(a.params.T_DFT_ns)} µs` : 'zero amplitude'}`;
+      },
+    };
+  };
+
+  /** Thin spectrum strip of one symbol (|value| per subcarrier); reports the hovered / clicked subcarrier. */
+  function toneStrip(a, values, cb) {
+    const fft = a.dataTones.fft, H = 46;
+    const X = (k) => LEFT + ((k + fft / 2 + 0.5) / fft) * PW, px = PW / fft;
+    const svg = s('svg', { class: 'diagram', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': 'Subcarriers of this symbol: hover to overlay one, click to zoom in' });
+    const amp = Math.max(...values.map((v) => (v.z ? Math.hypot(v.z.re, v.z.im) : 0))) || 1;
+    for (const v of values) {
+      const hgt = v.z ? 6 + 28 * (Math.hypot(v.z.re, v.z.im) / amp) : 3;
+      svg.append(s('rect', { x: X(v.k) - Math.max(0.5, px * 0.35), y: 36 - hgt, width: Math.max(1, px * 0.7), height: hgt, fill: V.KIND[v.kind].color, opacity: v.z ? 0.9 : 0.6 }));
+    }
+    svg.append(s('line', { x1: LEFT, x2: W - RIGHT, y1: 36.5, y2: 36.5, stroke: '#a7b2c6' }),
+      s('text', { x: LEFT - 6, y: 30, 'text-anchor': 'end', class: 'muted small' }, '|X_k|'),
+      s('text', { x: LEFT, y: H - 1, class: 'muted mono small' }, V.signed(-fft / 2, 0)),
+      s('text', { x: W - RIGHT, y: H - 1, 'text-anchor': 'end', class: 'muted mono small' }, V.signed(fft / 2 - 1, 0)));
+    const cursor = s('rect', { x: 0, y: 0, width: Math.max(3, px), height: 37, fill: 'none', stroke: '#fbbf24', 'stroke-width': 1.5, opacity: 0 });
+    svg.append(cursor);
+    const kAt = (ev) => {
+      const r = svg.getBoundingClientRect();
+      const x = ((ev.clientX - r.left) / r.width) * W;
+      return Math.max(-fft / 2, Math.min(fft / 2 - 1, Math.round((x - LEFT) / px - fft / 2 - 0.5)));
+    };
+    svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); cursor.setAttribute('x', X(k) - Math.max(3, px) / 2); cursor.setAttribute('opacity', 1); cb.onHover(k); });
+    svg.addEventListener('mouseleave', () => { cursor.setAttribute('opacity', 0); cb.onHover(null); });
+    if (cb.onClick) { svg.style.cursor = 'zoom-in'; svg.addEventListener('click', (ev) => cb.onClick(kAt(ev), cursor.getBoundingClientRect())); }
+    return svg;
+  }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

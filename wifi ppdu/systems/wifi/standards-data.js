@@ -119,6 +119,7 @@ var WIFI_STANDARDS = {
     'ubc-elex7860': { title: 'UBC ELEX 7860 course solution quoting 802.11a: rate-1/2 convolutional code, K = 7, g0 = 133 and g1 = 171 (octal), punctured to 2/3 and 3/4', url: 'https://people.ece.ubc.ca/~edc/7860.jan2022/midterm1sol.pdf', kind: 'course', origin: 'UBC course' },
     'pat-interleaver-11a': { title: 'US patents 6934901 / RE44848 (802.11a block interleaver: 16 columns, two permutations, s = max(N_BPSC/2, 1))', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/6934901', kind: 'patent', origin: 'US 6934901' },
     'pat-he-interleaver': { title: 'US patent 10110406 (HE BCC interleaver parameters per RU size; a search summary quotes N_COL 13 / N_ROW 9 for the 242-tone RU — conflicts with the plan value)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10110406', kind: 'patent', origin: 'US 10110406' },
+    'gr-ieee80211': { title: 'gr-ieee802-11 (GNU Radio IEEE 802.11a/g/p transceiver, open source), lib/constellations_impl.cc: BPSK, QPSK, 16-QAM, 64-QAM point tables (index LSB = first bit)', url: 'https://github.com/bastibl/gr-ieee802-11/blob/maint-3.10/lib/constellations_impl.cc', kind: 'code', origin: 'gr-ieee802-11' },
     'tub-ofdm': { title: 'TU Berlin telecom exercises (802.11ac non-null subcarriers: 56/64, 114/128, 242/256, 484/512)', url: 'https://platform.commit.tu-berlin.de/en/book/telecom/chapter/ch25/section/exercises', kind: 'course', origin: 'TU Berlin' },
   },
 
@@ -676,6 +677,27 @@ var WIFI_STANDARDS = {
       value: 'I from the first half of each N_BPSCS bit group, Q from the second half (BPSK: I only). On each axis the first bit is the sign (0 → negative) and the level index is the inverse binary-reflected Gray code of the bits.',
       status: 'unverified', evidence: ['inet-ofdm', 'plan'],
       note: 'Matches the INET 16-QAM table; one origin.',
+    },
+    /* Constellation mapping as tables: on each axis, the bit group (first bit first) → level
+     * (odd integers; multiply by K_MOD = 1/sqrt(meanEnergy) for unit average power). I takes the
+     * first half of the N_BPSCS bits, Q the second half; BPSK has I only. */
+    constellationMapping: {
+      value: {
+        'BPSK': { I: { '0': -1, '1': 1 } },
+        'QPSK': { I: { '0': -1, '1': 1 }, Q: { '0': -1, '1': 1 } },
+        '16-QAM': { I: { '10': 3, '11': 1, '00': -3, '01': -1 }, Q: { '10': 3, '11': 1, '00': -3, '01': -1 } },
+        '64-QAM': { I: { '100': 7, '101': 5, '110': 1, '111': 3, '000': -7, '001': -5, '010': -1, '011': -3 }, Q: { '100': 7, '101': 5, '110': 1, '111': 3, '000': -7, '001': -5, '010': -1, '011': -3 } },
+      },
+      status: 'supported', evidence: ['gr-ieee80211', 'inet-ofdm', 'plan'],
+      note: 'Checked point by point: gr-ieee802-11 (BPSK, QPSK, 16-QAM, 64-QAM) and INET (same four) give the same points when the first bit is the index LSB. BPSK: 0 → −1, 1 → +1.',
+    },
+    constellationMappingHigh: {
+      value: {
+        '256-QAM': { I: { '1000': 15, '1001': 13, '1010': 9, '1011': 11, '1100': 1, '1101': 3, '1110': 7, '1111': 5, '0000': -15, '0001': -13, '0010': -9, '0011': -11, '0100': -1, '0101': -3, '0110': -7, '0111': -5 }, Q: { '1000': 15, '1001': 13, '1010': 9, '1011': 11, '1100': 1, '1101': 3, '1110': 7, '1111': 5, '0000': -15, '0001': -13, '0010': -9, '0011': -11, '0100': -1, '0101': -3, '0110': -7, '0111': -5 } },
+        '1024-QAM': { I: { '10000': 31, '10001': 29, '10010': 25, '10011': 27, '10100': 17, '10101': 19, '10110': 23, '10111': 21, '11000': 1, '11001': 3, '11010': 7, '11011': 5, '11100': 15, '11101': 13, '11110': 9, '11111': 11, '00000': -31, '00001': -29, '00010': -25, '00011': -27, '00100': -17, '00101': -19, '00110': -23, '00111': -21, '01000': -1, '01001': -3, '01010': -7, '01011': -5, '01100': -15, '01101': -13, '01110': -9, '01111': -11 }, Q: { '10000': 31, '10001': 29, '10010': 25, '10011': 27, '10100': 17, '10101': 19, '10110': 23, '10111': 21, '11000': 1, '11001': 3, '11010': 7, '11011': 5, '11100': 15, '11101': 13, '11110': 9, '11111': 11, '00000': -31, '00001': -29, '00010': -25, '00011': -27, '00100': -17, '00101': -19, '00110': -23, '00111': -21, '01000': -1, '01001': -3, '01010': -7, '01011': -5, '01100': -15, '01101': -13, '01110': -9, '01111': -11 } },
+      },
+      status: 'unverified', evidence: ['plan'],
+      note: 'Same Gray rule extended to 4 and 5 bits per axis. INET\'s 256/1024-QAM tables use another bit layout (Q bits first, generated from patent WO2003058904), so no second source agrees.',
     },
     meanEnergy: {
       value: { 'BPSK': 1, 'QPSK': 2, '16-QAM': 10, '64-QAM': 42, '256-QAM': 170, '1024-QAM': 682 },

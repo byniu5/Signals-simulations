@@ -242,3 +242,18 @@ svg.diagram line.grow { transform-box: fill-box; transform-origin: bottom; anima
 }
 .zoom-window { margin: 4px 0 8px; border-top: 1px dashed var(--line-2); padding-top: 6px; }
 .zoom-window h3 { margin: 0; font-size: .9rem; }
+
+/* ---------- subcarrier level ---------- */
+.sc-grid { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 16px; align-items: start; }
+@media (max-width: 1100px) { .sc-grid { grid-template-columns: minmax(0, 1fr); } .sc-grid .cons-fig { max-width: 340px; } }
+.sc-grid svg.constellation { max-width: 220px; }
+.bit-row { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+.bit { display: inline-flex; flex-direction: column; align-items: center; min-width: 30px; padding: 3px 6px; font: 700 1rem var(--mono); }
+.bit small { font: 400 .62rem var(--mono); color: var(--muted); }
+.bit.bi { border-color: rgba(56,189,248,.6); }
+.bit.bq { border-color: rgba(167,139,250,.7); }
+.sub-panel { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 8px; }
+.sub-panel h3, .time-preview h3 { margin: 0; font-size: .95rem; }
+.tone-strip, .time-preview { margin: 4px 0 10px; }
+.time-preview { border-top: 1px dashed var(--line-2); padding-top: 6px; }
+.strip-label { min-height: 1.3em; }
