@@ -80,7 +80,7 @@
       { k: kMin, priority: 4 }, { k: kMax, priority: 4 },
     ];
     for (const r of V.runs(tones)) if (r.kind === 'dc' || r.kind === 'null') cands.push({ k: r.from, priority: 2 }, { k: r.to, priority: 2 });
-    const labels = V.placeLabels(cands.map((c) => Object.assign(c, { x: X(c.k) })), 44);
+    const labels = V.placeLabels(cands.map((c) => Object.assign(c, { x: X(c.k) })), 60);
     // keep the outermost labels inside the plot (and clear of the axis titles on the left)
     const anchor = (x) => (x < LEFT + 24 ? { x: x - 3, 'text-anchor': 'start' } : x > W - RIGHT - 24 ? { x: x + 3, 'text-anchor': 'end' } : { x, 'text-anchor': 'middle' });
     for (const l of labels) {
@@ -116,7 +116,7 @@
     if (needWindow) {
       svg.append(s('rect', { x: X(k0) - px / 2, y: 30, width: WIN * px, height: BASE - 26, fill: 'rgba(230,234,242,.06)', stroke: '#e6eaf2', 'stroke-width': 1.2, 'stroke-dasharray': '4 3', 'pointer-events': 'none' }));
       // click anywhere on the overview to centre the zoom window there
-      svg.style.cursor = 'zoom-in';
+      svg.style.cursor = 'pointer';
       svg.addEventListener('click', (ev) => {
         const r = svg.getBoundingClientRect();
         const k = Math.round(((ev.clientX - r.left) / r.width) * W / px - LEFT / px - fft / 2 - 0.5);
@@ -195,12 +195,11 @@
         const r = svg.getBoundingClientRect();
         return Math.max(-fft / 2, Math.min(fft / 2 - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px - fft / 2 - 0.5)));
       };
-      if (opts.onHoverK) {
-        svg.addEventListener('mousemove', (ev) => opts.onHoverK(kAt(ev)));
-        svg.addEventListener('mouseleave', () => opts.onHoverK(null));
-      }
+      const mark = hoverMarker(svg, X, px, 30, BASE + 4);
+      svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); mark.show(k); if (opts.onHoverK) opts.onHoverK(k); });
+      svg.addEventListener('mouseleave', () => { mark.show(null); if (opts.onHoverK) opts.onHoverK(null); });
       if (opts.onSubcarrier && !needWindow) {
-        svg.style.cursor = 'zoom-in';
+        svg.style.cursor = 'pointer';
         svg.addEventListener('click', (ev) => opts.onSubcarrier(kAt(ev), { left: ev.clientX - 6, top: ev.clientY - 30, width: 12, height: 60 }));
       }
     }
@@ -240,8 +239,12 @@
       const r = svg.getBoundingClientRect();
       return Math.max(k0, Math.min(k0 + WIN - 1, Math.round((((ev.clientX - r.left) / r.width) * W - LEFT) / px + k0 - 0.5)));
     };
-    if (opts.onHoverK) { svg.addEventListener('mousemove', (ev) => opts.onHoverK(kAt(ev))); svg.addEventListener('mouseleave', () => opts.onHoverK(null)); }
-    if (opts.onSubcarrier) { svg.style.cursor = 'zoom-in'; svg.addEventListener('click', (ev) => opts.onSubcarrier(kAt(ev), { left: ev.clientX - 6, top: ev.clientY - 30, width: 12, height: 60 })); }
+    if (opts.onHoverK || opts.onSubcarrier) {
+      const mark = hoverMarker(svg, X, px, 4, B + 4);
+      svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); mark.show(k); if (opts.onHoverK) opts.onHoverK(k); });
+      svg.addEventListener('mouseleave', () => { mark.show(null); if (opts.onHoverK) opts.onHoverK(null); });
+    }
+    if (opts.onSubcarrier) { svg.style.cursor = 'pointer'; svg.addEventListener('click', (ev) => opts.onSubcarrier(kAt(ev), { left: ev.clientX - 6, top: ev.clientY - 30, width: 12, height: 60 })); }
     const move = (d) => opts.onWindow && opts.onWindow(Math.max(-fft / 2, Math.min(fft / 2 - WIN, k0 + d)));
     return h('div', { class: 'zoom-window' },
       h('div', { class: 'view-head' },
@@ -251,6 +254,24 @@
           h('button', { type: 'button', onclick: () => opts.onWindow && opts.onWindow(-WIN / 2) }, 'centre'),
           h('button', { type: 'button', onclick: () => move(WIN / 2), disabled: k0 >= fft / 2 - WIN, 'aria-label': 'Move the zoom window right' }, '▶'))),
       svg);
+  }
+
+  /** Highlight + "k = …" label that follows the mouse, so it is clear which subcarrier a click picks. */
+  function hoverMarker(svg, X, px, y0, y1) {
+    const w = Math.max(5, px);
+    const box = s('rect', { y: y0, width: w, height: y1 - y0, rx: 2, fill: 'rgba(230,234,242,.18)', stroke: '#e6eaf2', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
+    const tag = s('text', { y: y0 - 4 > 10 ? y0 - 4 : y1 + 14, 'text-anchor': 'middle', class: 'mono', 'font-weight': 700, opacity: 0, 'pointer-events': 'none' }, '');
+    svg.append(box, tag);
+    return {
+      show(k) {
+        const on = k !== null && k !== undefined;
+        box.setAttribute('opacity', on ? 1 : 0); tag.setAttribute('opacity', on ? 1 : 0);
+        if (!on) return;
+        box.setAttribute('x', X(k) - w / 2);
+        tag.setAttribute('x', Math.min(W - RIGHT - 24, Math.max(LEFT + 24, X(k))));
+        tag.textContent = `k = ${V.signed(k, 0)}`;
+      },
+    };
   }
 
   function rotationLabel(deg) {

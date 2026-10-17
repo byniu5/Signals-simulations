@@ -55,7 +55,7 @@
         svg.append(s('rect', { x: m0, y: 2, width: Math.max(2, m1 - m0), height: SH - 4, fill: '#ffffff', opacity: 0.85 }));
       }
       here(svg, r[0], r[1]);
-      wrap.append(svg.parentNode, funnel(r[0], r[1], 'Data field'));
+      wrap.append(svg.parentNode, funnel(r[0], r[1], depth >= 2));
     }
     /* ---- Data-field strip ---- */
     if (depth >= 2) {
@@ -75,7 +75,7 @@
       }, true);
       const m0 = sx(nav.sym), m1 = Math.max(m0 + 4, sx(nav.sym + 1));
       here(svg, m0, m1);
-      wrap.append(svg.parentNode, funnel(m0, m1, `Symbol ${nav.sym}`));
+      wrap.append(svg.parentNode, funnel(m0, m1, depth >= 3));
     }
     /* ---- symbol strip (spectrum), when a subcarrier is entered ---- */
     if (depth >= 3) {
@@ -86,6 +86,16 @@
         const hgt = r.kind === 'data' ? SH - 12 : r.kind === 'pilot' ? SH - 8 : 5;
         svg.append(s('rect', { x: kx(r.from), y: SH - 4 - hgt, width: Math.max(0.8, (r.to - r.from + 1) * kw), height: hgt, fill: V.KIND[r.kind].color, opacity: 0.85 }));
       }
+      const hov = s('rect', { y: 0, width: Math.max(3, kw), height: SH, fill: 'none', stroke: '#e6eaf2', 'stroke-width': 1.5, opacity: 0, 'pointer-events': 'none' });
+      const hovT = s('text', { y: 11, 'text-anchor': 'middle', class: 'mono small', opacity: 0, 'pointer-events': 'none' }, '');
+      svg.append(hov, hovT);
+      svg.addEventListener('mousemove', (ev) => {
+        const r = svg.getBoundingClientRect(), x = ((ev.clientX - r.left) / r.width) * W;
+        const on = x >= X0;
+        hov.setAttribute('opacity', on ? 1 : 0); hovT.setAttribute('opacity', on ? 1 : 0);
+        if (on) { const k = Math.round((x - X0) / kw - fft / 2); hov.setAttribute('x', kx(k) - 1); hovT.setAttribute('x', Math.min(X1 - 20, Math.max(X0 + 20, kx(k)))); hovT.textContent = V.signed(k, 0); }
+      });
+      svg.addEventListener('mouseleave', () => { hov.setAttribute('opacity', 0); hovT.setAttribute('opacity', 0); });
       svg.addEventListener('click', (ev) => {
         const r = svg.getBoundingClientRect(), x = ((ev.clientX - r.left) / r.width) * W;
         ev.stopPropagation();
@@ -94,7 +104,7 @@
       }, true);
       const m0 = kx(nav.sc), m1 = Math.max(m0 + 4, kx(nav.sc + 1));
       here(svg, m0, m1);
-      wrap.append(svg.parentNode, funnel(m0, m1, `Subcarrier ${V.signed(nav.sc, 0)}`));
+      wrap.append(svg.parentNode, funnel(m0, m1, false));
     }
     return wrap;
   };
@@ -110,11 +120,11 @@
   function here(svg, x0, x1) {
     svg.append(s('rect', { x: x0 - 2, y: 1, width: x1 - x0 + 4, height: SH - 2, rx: 3, fill: 'none', stroke: '#fbbf24', 'stroke-width': 2 }));
   }
-  /** Funnel from the marked rectangle down to the full width of what comes next. */
-  function funnel(x0, x1, label) {
-    const FH = 16;
+  /** Funnel from the marked rectangle down to what comes next: the drawing area of the next strip, or the full main view. */
+  function funnel(x0, x1, toStrip) {
+    const FH = 16, b0 = toStrip ? X0 : 0, b1 = toStrip ? X1 : W;
     return s('svg', { class: 'diagram ctx-funnel', viewBox: `0 0 ${W} ${FH}`, 'aria-hidden': 'true', preserveAspectRatio: 'none' },
-      s('path', { d: `M${x0 - 2},0 L${x1 + 2},0 L${W},${FH} L0,${FH} Z`, fill: '#fbbf24', opacity: 0.1 }),
-      s('path', { d: `M${x0 - 2},0 L0,${FH} M${x1 + 2},0 L${W},${FH}`, stroke: '#fbbf24', 'stroke-width': 1.2, opacity: 0.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }));
+      s('path', { d: `M${x0 - 2},0 L${x1 + 2},0 L${b1},${FH} L${b0},${FH} Z`, fill: '#fbbf24', opacity: 0.1 }),
+      s('path', { d: `M${x0 - 2},0 L${b0},${FH} M${x1 + 2},0 L${b1},${FH}`, stroke: '#fbbf24', 'stroke-width': 1.2, opacity: 0.8, fill: 'none', 'vector-effect': 'non-scaling-stroke' }));
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

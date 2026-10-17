@@ -204,7 +204,7 @@
     };
     svg.addEventListener('mousemove', (ev) => { const k = kAt(ev); cursor.setAttribute('x', X(k) - Math.max(3, px) / 2); cursor.setAttribute('opacity', 1); cb.onHover(k); });
     svg.addEventListener('mouseleave', () => { cursor.setAttribute('opacity', 0); cb.onHover(null); });
-    if (cb.onClick) { svg.style.cursor = 'zoom-in'; svg.addEventListener('click', (ev) => cb.onClick(kAt(ev), cursor.getBoundingClientRect())); }
+    if (cb.onClick) { svg.style.cursor = 'pointer'; svg.addEventListener('click', (ev) => cb.onClick(kAt(ev), cursor.getBoundingClientRect())); }
     return svg;
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

@@ -74,7 +74,7 @@
       if (nav.level === 'ppdu') el.append(V.ppdu(a, { selected: state.selected, symbolIndex: nav.sym,
         onField: (name) => { state.selected = name; stage.show(render); drawInfo(); },
         onData: (r) => navigate({ level: 'data' }, r),
-        onSymbol: (i, r) => navigate({ level: 'symbol', sym: i }, r) }));
+        onSymbol: (i, r) => navigate({ level: 'data', sym: i }, r) })); // one level at a time: PPDU → Data field
       else if (nav.level === 'data') el.append(V.dataField(a, { index: nav.sym,
         onIndex: (i) => navigate({ sym: i }, null, true),
         onZoomIn: (i, r) => navigate({ level: 'symbol', sym: i }, r) }));
@@ -95,7 +95,7 @@
     };
     // where the inner level sits inside the outer view (target of the zoom-out animation)
     const anchorIn = (outer, inner) => (outer.level === 'ppdu'
-      ? (inner.level === 'data' ? '[data-zoom-target="data"]' : `[data-zoom-symbol="${inner.sym}"]`)
+      ? '[data-zoom-target="data"]'
       : outer.level === 'data' ? `[data-zoom-symbol="${inner.sym}"]`
         : outer.view === 'time' ? '[data-zoom-target="useful"]' : `[data-zoom-k="${inner.sc}"]`);
 
