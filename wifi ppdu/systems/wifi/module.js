@@ -1,8 +1,9 @@
 /* systems/wifi/module.js — registers the Wi-Fi system with the core.
  *
  * Holds the configuration, builds the controls from WifiCalc.options(), and moves
- * between the three zoom levels (subcarrier map ⊂ OFDM symbol ⊂ PPDU). All
- * numbers shown come from WifiCalc.analyze(config).
+ * between the zoom levels PPDU > Data field > OFDM symbol (Time | Spectrum) >
+ * Subcarrier (state and URL hash in WifiNav). All numbers shown come from
+ * WifiCalc.analyze(config).
  */
 (function (root) {
   'use strict';
@@ -11,9 +12,7 @@
 
   /* Generations with views in the current milestone; the others are listed but disabled. */
   const AVAILABLE = { nonHT: true, HT: true, VHT: true, HE: true };
-  /* Zoom levels, innermost first. */
-  const LEVELS = ['subcarriers', 'symbol', 'ppdu'];
-  const LEVEL_LABEL = { subcarriers: 'Subcarrier map', symbol: 'OFDM symbol', ppdu: 'PPDU' };
+  const Nav = root.WifiNav;
 
   function glossary() {
     return Object.entries(D.terms).map(([id, t]) => {
@@ -26,24 +25,38 @@
   }
 
   /* State shared by the three modes (the core remounts a mode on every tab switch). */
-  const shared = { cfg: { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', payload: 1500 }, level: 'subcarriers' };
+  const shared = { cfg: { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', payload: 1500 }, nav: null };
+
+  /** The configuration fields written to the URL hash. */
+  function hashCfg(cfg) {
+    const out = { gen: cfg.gen, band: cfg.band, bw: cfg.bw, gi: cfg.gi, nss: cfg.nss, payload: cfg.payload };
+    if (cfg.mcs !== null && cfg.mcs !== undefined) out.mcs = cfg.mcs; else { out.mod = cfg.mod; out.R = cfg.R; }
+    if (cfg.gen === 'HE') { out.ltf = cfg.ltf; out.nominalPadding = cfg.nominalPadding; }
+    return out;
+  }
 
   function mountPpdu(container) {
+    // position and configuration: the URL hash wins (deep link, back button), then what the other modes left
+    const fromHash = Nav.parse(location.hash);
+    const hasHash = /level=/.test(location.hash);
     const state = {
-      cfg: C.normalize(shared.cfg).cfg,
-      level: shared.level, symbolIndex: 1, field: 'data', selected: null,
+      cfg: C.normalize(Object.assign({}, shared.cfg, hasHash ? fromHash.cfg : {})).cfg,
+      nav: hasHash ? fromHash.nav : Object.assign({}, Nav.DEFAULT, shared.nav),
+      selected: null,
       ru: null, // RU size of the HE MU / TB overlay on the subcarrier map (null = off)
       mapWindow: null, // first subcarrier of the 64-subcarrier zoom window (wide FFTs)
     };
     let a = C.analyze(state.cfg);
+    const limits = () => ({ nSym: a.symbols.N_SYM, fft: a.dataTones.fft });
+    state.nav = shared.nav = Nav.clamp(state.nav, limits());
 
     const controls = h('section', { class: 'panel controls', 'aria-label': 'Configuration' });
-    const crumbs = h('nav', { class: 'crumbs', 'aria-label': 'Zoom level' });
+    const ctxArea = h('div', { class: 'ctx' }); // sticky: breadcrumb + one strip per level above
     const stageEl = h('div');
     const info = h('div');
     const outputs = h('section', { class: 'panel outputs', 'aria-live': 'polite' });
     const checks = h('section', { class: 'panel', style: { marginTop: '16px' } });
-    container.append(h('div', { class: 'ppdu-mode' }, controls, h('section', { class: 'stage-wrap' }, crumbs, stageEl, info), outputs), checks);
+    container.append(h('div', { class: 'ppdu-mode' }, controls, h('section', { class: 'stage-wrap' }, ctxArea, stageEl, info), outputs), checks);
     const stage = root.Zoom.stage(stageEl);
     // the output panel scrolls on its own and always ends inside the window, wherever it currently sits
     const fitOutputs = () => {
@@ -56,47 +69,94 @@
     requestAnimationFrame(fitOutputs);
 
     /* ---------- views ---------- */
-    const renderer = (level) => (el) => {
-      if (level === 'subcarriers') el.append(V.frequency(a, { field: state.field, onField: (f) => { state.field = f; redraw(); },
-        ru: state.ru, onRu: (size) => { state.ru = size; redraw(); },
-        windowStart: state.mapWindow, onWindow: (k) => { state.mapWindow = k; redraw(); } }));
-      else if (level === 'symbol') el.append(V.symbol(a, { index: state.symbolIndex, onIndex: (i) => { state.symbolIndex = i; redraw(); }, onZoomIn: (r) => go('subcarriers', r) }));
-      else el.append(V.ppdu(a, { selected: state.selected, symbolIndex: state.symbolIndex,
-        onField: (name) => { state.selected = name; redraw(); },
-        onSymbol: (i, r) => { state.symbolIndex = i; go('symbol', r); } }));
+    const render = (el) => {
+      const nav = state.nav;
+      if (nav.level === 'ppdu') el.append(V.ppdu(a, { selected: state.selected, symbolIndex: nav.sym,
+        onField: (name) => { state.selected = name; stage.show(render); drawInfo(); },
+        onData: (r) => navigate({ level: 'data' }, r),
+        onSymbol: (i, r) => navigate({ level: 'symbol', sym: i }, r) }));
+      else if (nav.level === 'data') el.append(V.dataField(a, { index: nav.sym,
+        onIndex: (i) => navigate({ sym: i }, null, true),
+        onZoomIn: (i, r) => navigate({ level: 'symbol', sym: i }, r) }));
+      else if (nav.level === 'subcarrier' && V.subcarrier) el.append(V.subcarrier(a, nav, { navigate }));
+      else if (nav.view === 'time') el.append(V.symbol(a, { index: nav.sym,
+        onIndex: (i) => navigate({ sym: i }, null, true),
+        onZoomIn: (r) => navigate({ view: 'spectrum' }, r) }));
+      else el.append(V.frequency(a, { field: nav.field, onField: (f) => navigate({ field: f }, null, true),
+        ru: state.ru, onRu: (size) => { state.ru = size; stage.show(render); },
+        windowStart: state.mapWindow, onWindow: (k) => { state.mapWindow = k; stage.show(render); },
+        onSubcarrier: V.subcarrier ? (k, r) => navigate({ level: 'subcarrier', sc: k }, r) : null }));
     };
-    // where a level sits inside the next outer level (used to aim the zoom animation)
-    const anchorIn = (outer) => (outer === 'symbol' ? '[data-zoom-target="useful"]' : `[data-zoom-symbol="${state.symbolIndex}"]`);
+    // where the inner level sits inside the outer view (target of the zoom-out animation)
+    const anchorIn = (outer, inner) => (outer.level === 'ppdu'
+      ? (inner.level === 'data' ? '[data-zoom-target="data"]' : `[data-zoom-symbol="${inner.sym}"]`)
+      : outer.level === 'data' ? `[data-zoom-symbol="${inner.sym}"]`
+        : outer.view === 'time' ? '[data-zoom-target="useful"]' : `[data-zoom-k="${inner.sc}"]`);
 
-    function go(level, fromRect) {
-      const from = LEVELS.indexOf(state.level), to = LEVELS.indexOf(level);
-      if (from === to) return;
-      if (to < from) {
-        const anchor = stage.view && stage.view.querySelector(anchorIn(state.level));
-        const rect = fromRect || (anchor && anchor.getBoundingClientRect());
-        state.level = shared.level = level;
-        stage.zoomIn(renderer(level), rect);
-      } else {
-        state.level = shared.level = level;
-        stage.zoomOut(renderer(level), anchorIn(level)); // shrink into where the inner view sits
-      }
-      drawCrumbs();
+    /** Go somewhere: patch the position, keep it valid, record it in the URL, animate. */
+    function navigate(patch, fromRect, replaceHistory) {
+      const prev = state.nav;
+      state.nav = shared.nav = Nav.clamp(Object.assign({}, prev, patch), limits());
+      writeHash(replaceHistory || prev.level === state.nav.level);
+      transition(prev, state.nav, fromRect);
+    }
+    function transition(prev, next, fromRect) {
+      const d0 = Nav.depth(prev.level), d1 = Nav.depth(next.level);
+      if (d1 > d0 && fromRect) stage.zoomIn(render, fromRect);
+      else if (d1 < d0) stage.zoomOut(render, anchorIn(next, prev));
+      else if (d1 === d0 && prev.view !== next.view && fromRect) stage.zoomIn(render, fromRect);
+      else stage.show(render);
+      drawChrome();
       drawInfo();
     }
+    function writeHash(replace) {
+      const hsh = Nav.format(state.nav, hashCfg(state.cfg));
+      if (hsh === location.hash) return;
+      try { history[replace ? 'replaceState' : 'pushState'](null, '', hsh); } catch (e) { location.hash = hsh; }
+    }
+    // back / forward buttons and hand-edited links
+    const onPop = () => {
+      if (!container.isConnected) { removeEventListener('popstate', onPop); removeEventListener('hashchange', onPop); return; }
+      if (location.hash === Nav.format(state.nav, hashCfg(state.cfg))) return;
+      const { nav, cfg } = Nav.parse(location.hash);
+      const prev = state.nav;
+      state.cfg = shared.cfg = C.normalize(Object.assign({}, state.cfg, cfg)).cfg;
+      a = C.analyze(state.cfg);
+      state.nav = shared.nav = Nav.clamp(nav, limits());
+      drawControls();
+      outputs.replaceChildren(V.outputs(a));
+      transition(prev, state.nav, null);
+      writeHash(true); // show the clamped position in the address bar
+    };
+    addEventListener('popstate', onPop);
+    addEventListener('hashchange', onPop);
+    // keyboard: ← → previous / next symbol (or subcarrier), Esc zooms out
+    const onKey = (e) => {
+      if (!container.isConnected) { removeEventListener('keydown', onKey); return; }
+      if (e.altKey || e.ctrlKey || e.metaKey || (e.target.closest && e.target.closest('input, select, textarea, .drawer'))) return;
+      const lv = state.nav.level;
+      if (e.key === 'Escape' && lv !== 'ppdu') { e.preventDefault(); navigate({ level: Nav.parent(lv) }); }
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        const d = e.key === 'ArrowLeft' ? -1 : 1;
+        if (lv === 'data' || lv === 'symbol') { e.preventDefault(); navigate({ sym: state.nav.sym + d }, null, true); }
+        else if (lv === 'subcarrier') { e.preventDefault(); navigate({ sc: state.nav.sc + d }, null, true); }
+      }
+    };
+    addEventListener('keydown', onKey);
 
-    function drawCrumbs() {
-      const parts = [];
-      LEVELS.forEach((lv, i) => {
-        if (i) parts.push(h('span', { class: 'arrow', 'aria-hidden': 'true' }, '⊂'));
-        parts.push(h('button', { type: 'button', 'aria-current': String(lv === state.level), onclick: () => go(lv) }, LEVEL_LABEL[lv]));
-      });
-      parts.push(h('span', { class: 'muted small' }, '  smallest unit → whole packet; click inside a view to zoom in'));
-      crumbs.replaceChildren(...parts);
+    function drawChrome() {
+      const cb = {
+        onLevel: (lv) => navigate({ level: lv }),
+        onView: (v) => navigate({ view: v }, null, true),
+        onSymbol: (i) => navigate({ sym: i }, null, true),
+        onSubcarrier: (k) => navigate({ sc: k }, null, true),
+      };
+      ctxArea.replaceChildren(V.breadcrumb(a, state.nav, cb), V.contextStrips(a, state.nav, cb));
     }
 
     function drawInfo() {
       info.replaceChildren();
-      if (state.level === 'ppdu' && state.selected) {
+      if (state.nav.level === 'ppdu' && state.selected) {
         const card = V.fieldInfo(a, state.selected);
         if (card) info.append(card);
       }
@@ -118,6 +178,7 @@
       state.cfg = cfg;
       shared.cfg = cfg;
       redraw();
+      writeHash(true);
     }
     function select(labelNode, value, options, onchange, disabled) {
       return h('label', { class: 'ctl' }, h('span', null, labelNode),
@@ -163,19 +224,21 @@
       ].filter(Boolean)); // replaceChildren would print "null" for empty slots
     }
 
+    /** After a configuration change: same level if still valid, indices clamped (WifiNav.clamp). */
     function redraw() {
       a = C.analyze(state.cfg);
-      state.symbolIndex = Math.min(state.symbolIndex, a.symbols.N_SYM);
+      state.nav = shared.nav = Nav.clamp(state.nav, limits());
       if (state.selected && !a.timeline.items.some((i) => i.name === state.selected)) state.selected = null;
       drawControls();
-      drawCrumbs();
-      stage.show(renderer(state.level));
+      drawChrome();
+      stage.show(render);
       drawInfo();
       outputs.replaceChildren(V.outputs(a));
     }
 
     checks.append(V.checks(C.runChecks()));
     redraw();
+    writeHash(true);
   }
 
   root.Systems.register({

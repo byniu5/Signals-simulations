@@ -292,7 +292,8 @@
         h('div', { class: 'cmp-name' }, h('i', { style: { background: GEN_COLOR[g] } }), label(g)),
         h('button', { type: 'button', class: 'small-btn', onclick: () => {
           shared.cfg = Object.assign({}, st.cfg[g], { payload: as[gens.indexOf(g)].cfg.payload });
-          shared.level = 'ppdu';
+          shared.nav = { level: 'ppdu', sym: 1, sc: null, view: 'time', field: 'data' };
+          try { history.pushState(null, '', root.WifiNav.format(shared.nav, Object.assign({}, shared.cfg))); } catch (e) { /* file:// in some browsers */ }
           ctx.selectMode('ppdu');
         } }, 'open in PPDU view →'))));
       const body = rows.map(([name, f]) => {

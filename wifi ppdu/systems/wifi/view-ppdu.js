@@ -158,6 +158,10 @@
 
   function drawData(svg, a, it, x, w, opts) {
     const n = it.count;
+    // the whole Data field: zoom target and click area for the Data-field level
+    const area = s('rect', { x: x - 2, y: Y2 - 22, width: w + 4, height: H2 + 24, fill: 'transparent', 'data-zoom-target': 'data' });
+    if (opts.onData) V.clickable(area, 'Zoom into the Data field', () => opts.onData(area.getBoundingClientRect()));
+    svg.append(area);
     const maxShown = Math.max(6, Math.floor(w / 13));
     const shown = n <= maxShown ? [...Array(n).keys()].map((i) => i + 1)
       : [...[...Array(maxShown - 5).keys()].map((i) => i + 1), null, n - 2, n - 1, n];
@@ -179,9 +183,10 @@
       svg.append(r);
       xx += sw;
     }
-    svg.append(
-      s('text', { x: x + w / 2, y: Y2 - 6, 'text-anchor': 'middle', 'font-weight': 600, 'data-term': 'Data field' },
-        w < 300 ? 'Data: ' : 'Data field: ', ...svgSym('N_SYM'), ` = ${n}`, w < 300 ? '' : ' OFDM symbols'),
+    const label = s('text', { x: x + w / 2, y: Y2 - 6, 'text-anchor': 'middle', 'font-weight': 600, 'data-term': 'Data field' },
+      w < 300 ? 'Data: ' : 'Data field: ', ...svgSym('N_SYM'), ` = ${n}`, w < 300 ? '' : ' OFDM symbols', opts.onData ? ' ⤢' : '');
+    if (opts.onData) { label.style.cursor = 'zoom-in'; label.addEventListener('click', () => opts.onData(area.getBoundingClientRect())); }
+    svg.append(label,
       s('text', { x: x + w / 2, y: Y2 + H2 + 31, 'text-anchor': 'middle', class: 'muted mono' }, `${n} × ${V.us(it.each_ns)} µs = ${V.us(it.dur_ns)} µs`));
   }
 

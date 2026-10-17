@@ -9,7 +9,7 @@
  */
 (function (root) {
   'use strict';
-  const DURATION = 520;
+  const DURATION = 260; // ms — short enough not to get in the way
   const EASE = 'cubic-bezier(.2,.7,.2,1)';
   const reduced = () => root.matchMedia && root.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
