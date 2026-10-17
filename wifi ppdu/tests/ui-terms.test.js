@@ -35,7 +35,7 @@ test('every glossary-linked label used in the views exists in the glossary', () 
 });
 
 test('every field of the generations with views has a glossary entry', () => {
-  for (const gen of ['nonHT', 'HT', 'VHT']) {
+  for (const gen of ['nonHT', 'HT', 'VHT', 'HE']) {
     const g = D.generations[gen];
     for (const f of g.fields) {
       const id = f.kind === 'data' ? 'Data field' : f.name;
@@ -44,7 +44,9 @@ test('every field of the generations with views has a glossary entry', () => {
     assert.ok(D.terms[g.ppduFormat], `${gen}: no glossary entry for ${g.ppduFormat}`);
     assert.ok(D.terms[g.payloadField.term], `${gen}: no glossary entry for ${g.payloadField.term}`);
   }
-  for (const id of ['Signal extension', 'Short GI', 'TXTIME', 'T_FFT', 'T_DFT', 'QBPSK', 'Phase rotation', 'N_LTF']) assert.ok(D.terms[id], id);
+  for (const id of ['Signal extension', 'Short GI', 'TXTIME', 'T_FFT', 'T_DFT', 'QBPSK', 'Phase rotation', 'N_LTF',
+    'HE-LTF type', 'Pre-FEC padding factor', 'Nominal packet padding', 'T_PE', 'LDPC', 'LDPC extra symbol segment', 'Pre-FEC padding',
+    'Post-FEC padding', 'N_SD,short', 'Resource unit', 'OFDMA', 'HE MU PPDU', 'HE TB PPDU', 'HE ER SU PPDU']) assert.ok(D.terms[id], id);
 });
 
 test('glossary entries have a definition and a known document; cited sub-clauses name a source', () => {

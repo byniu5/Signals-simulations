@@ -138,6 +138,35 @@
     }
 
     /* ======================================================================
+     *  HE resource units (HE MU / HE TB illustration — an HE SU PPDU uses the
+     *  whole channel as one RU)
+     * ==================================================================== */
+    const RU_PATH = 'generations.HE.resourceUnits';
+    /** RU sizes (tones) defined for a channel bandwidth, smallest first. */
+    function ruSizes(bw) {
+      const R = generation('HE').resourceUnits;
+      const l = val(R.layout160);
+      const sizes = Object.keys(val(R.subcarrierRanges)[bw === 160 ? l.from : bw] || {}).map(Number);
+      if (bw === 160) sizes.push(l.wholeChannel.size);
+      return sizes.sort((x, y) => x - y);
+    }
+    /**
+     * Every RU of one size in the channel: [{ index, ranges: [[first, last], ...], tones }].
+     * 160 MHz repeats the 80 MHz layout shifted by the data file's offsets.
+     */
+    function ruLayout(bw, size) {
+      const R = generation('HE').resourceUnits;
+      const table = use(R.subcarrierRanges, RU_PATH + '.subcarrierRanges');
+      let groups;
+      if (bw === 160) {
+        const l = use(R.layout160, RU_PATH + '.layout160');
+        if (size === l.wholeChannel.size) groups = [l.wholeChannel.ranges];
+        else groups = l.shift.flatMap((d) => (table[l.from][size] || []).map((g) => g.map(([a, b]) => [a + d, b + d])));
+      } else groups = (table[bw] || {})[size] || [];
+      return groups.map((ranges, i) => ({ index: i + 1, ranges, tones: ranges.reduce((n, [a, b]) => n + b - a + 1, 0) }));
+    }
+
+    /* ======================================================================
      *  Modulation and coding
      * ==================================================================== */
     function mcsOptions(genId) {
@@ -325,7 +354,7 @@
     function timeline(cfg, p, sym) {
       const g = generation(cfg.gen);
       const items = [];
-      let t = 0;
+      let t = 0, T_PE_ns = null;
       const push = (item) => { item.start_ns = t; t += item.dur_ns; items.push(item); };
 
       for (const f of g.fields) {
@@ -335,15 +364,21 @@
         }
         if (f.kind === 'pe') {
           const T_PE = use(g.packetExtension.T_PE, `generations.${cfg.gen}.packetExtension.T_PE`)[cfg.nominalPadding][sym.a - 1];
-          if (T_PE > 0) push({ name: 'PE', kind: 'pe', dur_ns: ns(T_PE) });
+          T_PE_ns = ns(T_PE);
+          if (T_PE > 0) push({ name: 'PE', kind: 'pe', dur_ns: T_PE_ns });
           continue;
         }
         if (f.count === 'N_LTF') {
           const n = numLtf(cfg);
-          let each;
-          if (f.durationEach === 'heLtf') each = ns(use(g.heLtf.symbolWithoutGi, `generations.${cfg.gen}.heLtf.symbolWithoutGi`)[cfg.ltf]) + p.T_GI_ns;
-          else each = ns(use(f.durationEach, `generations.${cfg.gen}.fields[${f.name}].durationEach`));
-          push({ name: f.name, kind: 'training', count: n, each_ns: each, dur_ns: n * each, toneplan: 'data' });
+          if (f.durationEach === 'heLtf') {
+            // HE-LTF symbol (1x / 2x / 4x) + the guard interval of the Data field
+            const sym_ns = ns(use(g.heLtf.symbolWithoutGi, `generations.${cfg.gen}.heLtf.symbolWithoutGi`)[cfg.ltf]);
+            const each = sym_ns + p.T_GI_ns;
+            push({ name: f.name, kind: 'training', count: n, each_ns: each, dur_ns: n * each, toneplan: 'data', ltf: cfg.ltf, symbol_ns: sym_ns, gi_ns: p.T_GI_ns });
+          } else {
+            const each = ns(use(f.durationEach, `generations.${cfg.gen}.fields[${f.name}].durationEach`));
+            push({ name: f.name, kind: 'training', count: n, each_ns: each, dur_ns: n * each, toneplan: 'data' });
+          }
           continue;
         }
         push({ name: f.name, kind: /STF|LTF/.test(f.name) ? 'training' : 'signal', dur_ns: ns(fieldDuration(cfg.gen, f)),
@@ -362,7 +397,7 @@
       const sigExt = use(D.interframe.signalExtension, 'interframe.signalExtension')[cfg.band] || 0;
       if (sigExt > 0) push({ name: 'Signal extension', kind: 'gap', dur_ns: ns(sigExt) });
 
-      return { items, onAir_ns, txtime_ns: t, signalExtension_ns: ns(sigExt) };
+      return { items, onAir_ns, txtime_ns: t, signalExtension_ns: ns(sigExt), T_PE_ns };
     }
 
     /**
@@ -407,7 +442,8 @@
 
     /** Fill in / correct a configuration so it is valid for the chosen generation. */
     function normalize(input) {
-      const cfg = Object.assign({ gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, payload: 1500, nominalPadding: 16, ltf: '2x' }, input);
+      const defaults = { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, payload: 1500, nominalPadding: 16, ltf: '2x' };
+      const cfg = Object.assign({}, defaults, input);
       const notes = [];
       if (!D.generations[cfg.gen]) cfg.gen = 'nonHT';
       const o = options(cfg);
@@ -418,7 +454,8 @@
       }
       if (!o.guardIntervals.includes(cfg.gi)) cfg.gi = o.guardIntervals[0];
       if (o.ltfTypes && !o.ltfTypes.some((x) => x.ltf === cfg.ltf && x.gi === cfg.gi)) {
-        cfg.ltf = o.ltfTypes.find((x) => x.gi === cfg.gi).ltf;
+        const fits = o.ltfTypes.filter((x) => x.gi === cfg.gi); // prefer the default HE-LTF type when the GI allows it
+        cfg.ltf = (fits.find((x) => x.ltf === defaults.ltf) || fits[0]).ltf;
       }
       if (!o.spatialStreams.includes(cfg.nss)) cfg.nss = Math.min(Math.max(cfg.nss, o.spatialStreams[0]), o.spatialStreams[o.spatialStreams.length - 1]);
 
@@ -492,6 +529,7 @@
       data: D, val, ns,
       generation, options, normalize, analyze, runChecks, toneplanOwner,
       dataToneMap, legacyToneMap, symbolParams, dataSymbols, ldpcParams, timeline, lsigLength, exclusion, displayMcs,
+      ruSizes, ruLayout,
     };
   }
 

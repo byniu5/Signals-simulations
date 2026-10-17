@@ -9,9 +9,9 @@ user; *supported* — at least two independent public sources, standard text not
 checked values; *unverified* — everything else. Sources are counted by their `origin` (several ns-3 files are one
 origin); `plan` and `arith` are cross-checks and never count as sources. The unit tests enforce these rules.
 
-- Status-bearing entries: **128** — unverified **29** · standard-checked **0** · supported **69** · derived **30**
+- Status-bearing entries: **130** — unverified **31** · standard-checked **0** · supported **69** · derived **30**
 
-## Unverified — please check against the standard (29)
+## Unverified — please check against the standard (31)
 
 Fewer than two independent public sources, or an input of a derivation is unverified. Shown as a warning in the app.
 
@@ -33,6 +33,8 @@ Fewer than two independent public sources, or an input of a derivation is unveri
 | `generations.HE.toneplan.160.occupied` | [[-1012,-515],[-509,-12],[12,509],[515,1012]] | ns3-heru, plan |  |
 | `generations.HE.toneplan.160.pilots` | [-980,-912,-846,-778,-738,-670,-604,-536,-488,-420,-354,-286,-246,-178,-112,-44,44,112,… | ieee-16-0623 | The 80 MHz set shifted by −512 and +512 (rule supplied in review). |
 | `generations.HE.resourceUnits.countPerBandwidth` | {"20":{"26":9,"52":4,"106":2,"242":1},"40":{"26":18,"52":8,"106":4,"242":2,"484":1},"80… | ns3-heru, plan |  |
+| `generations.HE.resourceUnits.subcarrierRanges` | {"20":{"26":[[[-121,-96]],[[-95,-70]],[[-68,-43]],[[-42,-17]],[[-16,-4],[4,16]],[[17,42… | ns3-heru | Parsed from ns-3 he-ru.cc (m_heRuSubcarrierGroups, citing Tables 27-7..27-9 of 802.11ax-2021); one origin. RU counts equal countPerBandwidth and every RU has exactly its number of tones (tests). |
+| `generations.HE.resourceUnits.layout160` | {"from":80,"shift":[-512,512],"wholeChannel":{"size":1992,"ranges":[[-1012,-515],[-509,… | ns3-heru | 160 MHz: the 80 MHz layout shifted by −512 and +512 (ns-3 GetSubcarrierGroup), plus the 2×996-tone RU over the whole channel. |
 | `generations.HE.N_LTF` | {"1":1,"2":2,"3":4,"4":4} | plan | Assumed equal to the VHT mapping; ns-3 caps HE-LTFs at 8 but does not show the mapping. |
 | `generations.HE.dataField.N_DBPS_rounding` | floor | tgbe-ndbps | N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector only. None of the 72 ns-3 HE TXTIME vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool. |
 | `lsig.nonHtLength` | PSDU length in octets | review-2, plan, mw-lsig | MathWorks + reviewer statement only (one public origin). |

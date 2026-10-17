@@ -25,14 +25,22 @@
       row(term('Guard interval', h('span', null, 'T', h('sub', null, 'GI'))), V.us(p.T_GI_ns) + ' µs'),
       row(term('T_SYM'), V.us(p.T_SYM_ns) + ' µs', `T_GI + ${tName}`),
       row(term('Data rate'), fmt(p.rateMbps, 2) + ' Mb/s', `${fmt(p.N_DBPS, 3)} bits / ${V.us(p.T_SYM_ns)} µs`),
-      row(term('N_SYM'), sy.N_SYM),
+      row(term('N_SYM'), sy.N_SYM, sy.coding === 'LDPC' && sy.N_SYM !== sy.N_SYM_init ? `N_SYM,init ${sy.N_SYM_init} + 1 (LDPC extra symbol segment)` : null),
       ltfItem ? row(term('N_LTF'), ltfItem.count, `${ltfItem.name} symbols for N_SS = ${p.N_SS}`) : null,
+      ltfItem && ltfItem.ltf ? row(term('HE-LTF type'), `${ltfItem.ltf} HE-LTF`, `${V.us(ltfItem.symbol_ns)} + ${V.us(ltfItem.gi_ns)} µs GI = ${V.us(ltfItem.each_ns)} µs each`) : null,
       sy.N_PAD !== undefined ? row(term('N_PAD'), sy.N_PAD + ' bits') : null,
+      sy.coding === 'LDPC' ? [
+        row(term('N_SD,short'), sy.N_SD_short, `RU of ${p.N_ST} tones`),
+        row(term('Pre-FEC padding', root.Dom.sym('N_PAD,Pre-FEC')), sy.N_PAD_preFEC + ' bits'),
+        row(term('Pre-FEC padding factor', 'a'), sy.a, !sy.ldpc.extraSegment ? '= a_init'
+          : sy.a_init === 4 ? 'a_init 4 → a = 1 in the extra OFDM symbol' : `a_init ${sy.a_init} + 1 (LDPC extra symbol segment)`),
+        row(term('T_PE'), V.us(a.timeline.T_PE_ns) + ' µs', `nominal packet padding ${a.cfg.nominalPadding} µs, a = ${sy.a}`),
+      ] : null,
       row(term('TXTIME'), V.us(a.timeline.txtime_ns) + ' µs', 'airtime of the whole PPDU'),
       row(h('span', null, 'L-SIG ', term('LENGTH')), a.lsig.LENGTH,
         a.lsig.rule === 'psdu' ? 'PSDU length'
           : `ceil((${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} − 20)/4)·3 − 3` + (a.lsig.m ? ` − m (m = ${a.lsig.m})` : '')),
-    ];
+    ].flat();
     const u = a.unverified;
     const notice = u.airtime.length || u.lsig.length
       ? h('div', { class: 'notice warn' },
@@ -42,7 +50,7 @@
         u.lsig.length ? h('div', null, 'L-SIG LENGTH depends on unverified data: ', u.lsig.join(', ')) : null)
       : h('div', { class: 'notice ok' }, 'No unverified data is used for these numbers (every input is supported or derived).');
     const problems = [];
-    if (a.excluded) problems.push(`This MCS / bandwidth / N_SS combination is not defined in the VHT-MCS tables (${a.excluded.status}: ${a.excluded.note}).`);
+    if (a.excluded) problems.push(`This MCS / bandwidth / N_SS combination is not defined in the VHT-MCS tables (${a.excluded.note}${a.excluded.status === 'unverified' ? ' — unverified' : ''}).`);
     if (a.maxPpdu.exceeded) problems.push(`TXTIME${a.timeline.signalExtension_ns ? ' (without the signal extension)' : ''} is ${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} µs, more than the maximum PPDU duration of ${V.us(a.maxPpdu.limit_ns)} µs that an L-SIG LENGTH can announce — this PPDU cannot be sent; reduce the payload or raise the MCS.`);
     else if (!a.lsig.valid) problems.push(`L-SIG LENGTH ${a.lsig.LENGTH} exceeds ${a.lsig.maxLength}.`);
     return h('div', null, h('h2', null, 'Output'),
@@ -108,12 +116,24 @@
         a.lsig.m ? h('div', { class: 'small muted' }, `m = ${a.lsig.m} for an ${g.ppduFormat}: LENGTH mod 3 = ${a.lsig.LENGTH % 3}, which tells an HE receiver the PPDU format before HE-SIG-A. `, statusOf(D.lsig.heM)) : null));
     }
     if (it.toneplan) {
-      const n20 = a.cfg.bw / 20;
+      const n20 = a.cfg.bw / 20, pre = a.cfg.gen === 'HE' ? 'pre-HE' : 'pre-HT';
       extra.push(h('div', null, 'Subcarrier plan: ', it.toneplan === 'legacy'
-        ? (n20 > 1 ? [`pre-HT — the 20 MHz Non-HT plan sent ${n20} times, once per 20 MHz subchannel, each with its own `, term('Phase rotation', 'phase rotation')] : 'pre-HT — the 20 MHz Non-HT plan')
-        : `${C.generation(a.cfg.gen).label} Data-field plan (${a.dataTones.N_ST} subcarriers at ${a.cfg.bw} MHz)`));
+        ? (n20 > 1 ? [`${pre} — the 20 MHz Non-HT plan sent ${n20} times, once per 20 MHz subchannel, each with its own `, term('Phase rotation', 'phase rotation')] : `${pre} — the 20 MHz Non-HT plan`)
+        : `${C.generation(a.cfg.gen).label} Data-field plan (${a.dataTones.N_ST} subcarriers at ${a.cfg.bw} MHz, Δ_F = ${fmt(a.dataTones.spacingKHz, 3)} kHz)`));
     }
-    if (it.count > 1) extra.push(h('div', null, `${it.count} symbols: `, term('N_LTF'), ` for N_SS = ${a.cfg.nss}`));
+    if (it.kind === 'training' && it.count) extra.push(h('div', null, `${it.count} symbol${it.count > 1 ? 's' : ''}: `, term('N_LTF'), ` for N_SS = ${a.cfg.nss} `, statusOf(g.N_LTF)));
+    if (it.ltf) {
+      extra.push(h('div', null, 'Each: ', term('HE-LTF type', `${it.ltf} HE-LTF`), ` symbol ${V.us(it.symbol_ns)} µs + GI ${V.us(it.gi_ns)} µs = ${V.us(it.each_ns)} µs `,
+        statusOf(g.heLtf.symbolWithoutGi), h('div', { class: 'small muted' }, 'The HE-LTFs use the guard interval of the Data field; HE-SIG-A signals the GI + HE-LTF type pair.')));
+    }
+    if (it.kind === 'pe') {
+      const pe = g.packetExtension;
+      extra.push(h('div', null, term('T_PE'), ` = ${V.us(it.dur_ns)} µs, from the `, term('Nominal packet padding', 'nominal packet padding'), ` ${a.cfg.nominalPadding} µs and `,
+        term('Pre-FEC padding factor', 'a'), ` = ${a.symbols.a}: for a = 1…4 this row gives ${pe.T_PE.value[a.cfg.nominalPadding].join(' / ')} µs `, statusOf(pe.T_PE)));
+    }
+    if (it.kind === 'data' && a.symbols.coding === 'LDPC') {
+      extra.push(h('div', null, 'Coding: ', term('LDPC'), `; the last of the ${a.symbols.N_SYM} symbols carries data in ${a.symbols.a} of its 4 segments (see the bits below the timeline).`));
+    }
     return h('div', { class: 'info-card' },
       h('h3', null, term(t ? (D.terms[name] ? name : 'Data field') : name, name), ' ',
         h('span', { class: 'mono muted' }, it.count > 1 ? `${it.count} × ${V.us(it.each_ns)} µs` : `${V.us(it.dur_ns)} µs`), ' ',

@@ -14,12 +14,19 @@
 
   /**
    * @param a     analysis from WifiCalc.analyze
-   * @param opts  { field: 'data' | 'legacy', onField(field) }
+   * @param opts  { field: 'data' | 'legacy', onField(field), ru: RU size | null, onRu(size) }
    */
   V.frequency = function (a, opts) {
+    const C = root.WifiCalc;
     const field = opts.field === 'legacy' ? 'legacy' : 'data';
     const map = field === 'legacy' ? a.legacyTones : a.dataTones;
-    const g = root.WifiCalc.generation(a.cfg.gen);
+    const g = C.generation(a.cfg.gen);
+    const pre = a.cfg.gen === 'HE' ? 'pre-HE' : 'pre-HT';
+    const legacyFields = g.fields.filter((f) => f.toneplan === 'legacy').map((f) => f.name);
+    // RU overlay: HE Data-field plan only (an illustration of HE MU / HE TB PPDUs)
+    const ruSizes = a.cfg.gen === 'HE' && field === 'data' ? C.ruSizes(a.cfg.bw) : [];
+    const ruSize = ruSizes.includes(opts.ru) ? opts.ru : null;
+    const rus = ruSize ? C.ruLayout(a.cfg.bw, ruSize) : [];
     const fft = map.fft, dfKHz = map.spacingKHz;
     const px = PW / fft;
     const X = (k) => LEFT + (k + fft / 2 + 0.5) * px;
@@ -35,6 +42,22 @@
         svg.append(s('rect', { x: x0, y: 34, width: x1 - x0, height: BASE - 34, fill: 'none', stroke: '#2b3a57', 'stroke-dasharray': '4 4' }),
           s('text', { x: (x0 + x1) / 2, y: 28, 'text-anchor': 'middle', class: 'muted' }, `20 MHz · ×${rotationLabel(sc.rotationDeg)}`));
       }
+    }
+
+    // --- resource units (behind the subcarriers)
+    if (rus.length) {
+      const RU_FILL = ['#38bdf8', '#a78bfa'];
+      const centres = [];
+      rus.forEach((ru, i) => {
+        for (const [k0, k1] of ru.ranges) {
+          const x0 = X(k0) - px / 2, x1 = X(k1) + px / 2;
+          svg.append(s('rect', { x: x0, y: 34, width: Math.max(1, x1 - x0), height: BASE - 34, fill: RU_FILL[i % 2], opacity: 0.16, stroke: RU_FILL[i % 2], 'stroke-opacity': 0.6 },
+            s('title', null, `RU ${ru.index} (${ru.tones} tones): k = ${ru.ranges.map(([p, q]) => `${V.signed(p, 0)}…${V.signed(q, 0)}`).join(' and ')}`)));
+        }
+        const ks = ru.ranges.flatMap(([p, q]) => [p, q]);
+        centres.push({ x: X((Math.min(...ks) + Math.max(...ks)) / 2), priority: 0, label: String(ru.index) });
+      });
+      for (const l of V.placeLabels(centres, 16)) svg.append(s('text', { x: l.x, y: 28, 'text-anchor': 'middle', class: 'mono small' }, l.label));
     }
 
     // --- subcarriers
@@ -89,20 +112,49 @@
     // fields that use this plan (the PE field carries no subcarrier data of its own)
     const fieldNames = g.fields.filter((f) => (field === 'legacy' ? f.toneplan === 'legacy' : f.toneplan !== 'legacy' && f.kind !== 'pe')).map((f) => f.name);
     const head = h('div', { class: 'view-head' },
-      h('h2', null, 'Subcarrier map — ', field === 'legacy' ? 'pre-HT fields' : 'Data field'),
+      h('h2', null, 'Subcarrier map — ', field === 'legacy' ? `${pre} fields` : 'Data field'),
       h('div', { class: 'seg', role: 'group', 'aria-label': 'Field' },
         h('button', { type: 'button', 'aria-pressed': String(field === 'data'), onclick: () => opts.onField('data') }, 'Data field'),
-        h('button', { type: 'button', 'aria-pressed': String(field === 'legacy'), onclick: () => opts.onField('legacy') }, 'Pre-HT fields (L-STF … SIG)')));
+        h('button', { type: 'button', 'aria-pressed': String(field === 'legacy'), onclick: () => opts.onField('legacy') },
+          `${pre[0].toUpperCase()}${pre.slice(1)} fields (${legacyFields[0]} … ${legacyFields[legacyFields.length - 1]})`)));
+    const ruBar = ruSizes.length ? h('div', { class: 'seg ru-seg', role: 'group', 'aria-label': 'Resource unit overlay' },
+      h('span', { class: 'muted small' }, term('Resource unit', 'RU'), ' overlay (', term('OFDMA'), ' illustration): '),
+      [null, ...ruSizes].map((size) => h('button', { type: 'button', 'aria-pressed': String(size === ruSize), onclick: () => opts.onRu(size) },
+        size === null ? 'off' : sizeLabel(size)))) : null;
     const chips = h('div', { class: 'chips' },
       chip('data', counts.data), chip('pilot', counts.pilot), chip('dc', counts.dc),
       counts.null ? chip('null', counts.null) : null, chip('guard', counts.guard));
 
     const occupiedMHz = ((kMax - kMin + 1) * dfKHz) / 1000;
+    // HE: the Data-field plan is 4x finer than the pre-HE plan (ratio from the two tone maps)
+    const ratio = a.legacyTones.spacingKHz / a.dataTones.spacingKHz;
     const facts = h('div', { class: 'formula' },
       term('FFT size'), ` = ${fft}   ·   `, term('Δ_F'), ` = ${fmt(dfKHz, 3)} kHz   →   ${fft} × ${fmt(dfKHz, 3)} kHz = ${fmt((fft * dfKHz) / 1000, 3)} MHz `, term('Channel bandwidth', 'channel'), '   ·   ',
       term('N_SD'), ` = ${map.N_SD}, `, term('N_SP'), ` = ${map.N_SP}, `, term('N_ST'), ` = ${map.N_ST}   ·   used subcarriers ${V.signed(kMin, 0)}…${V.signed(kMax, 0)} span ${fmt(occupiedMHz, 4)} MHz`,
       pilotsLabelled ? null : [h('br'), term('Pilot subcarrier', 'pilots'), ' at k = ', pilots.map((t) => V.signed(t.k, 0)).join(', ')],
-      counts.null ? [h('br'), term('Null subcarrier', 'null'), ' subcarriers ', V.runs(tones).filter((r) => r.kind === 'null').map((r) => `${V.signed(r.from, 0)}…${V.signed(r.to, 0)}`).join(', '), ': the centre of each 80 MHz half'] : null);
+      counts.null ? [h('br'), term('Null subcarrier', 'null'), ' subcarriers ', V.runs(tones).filter((r) => r.kind === 'null').map((r) => `${V.signed(r.from, 0)}…${V.signed(r.to, 0)}`).join(', '), ': the centre of each 80 MHz half'] : null,
+      ratio !== 1 ? [h('br'), field === 'data'
+        ? `Δ_F is ${fmt(ratio, 2)}× smaller than the ${fmt(a.legacyTones.spacingKHz, 3)} kHz of the ${pre} fields: ${fmt(ratio, 2)}× more subcarriers in the same channel and a ${fmt(ratio, 2)}× longer useful symbol (${V.us(a.params.T_DFT_ns)} µs), so the same guard interval costs less overhead.`
+        : `The HE part after ${legacyFields[legacyFields.length - 1]} switches to Δ_F = ${fmt(a.dataTones.spacingKHz, 3)} kHz (${fmt(ratio, 2)}× finer, FFT size ${a.dataTones.fft}).`] : null);
+
+    // RU overlay summary (HE MU / HE TB illustration)
+    let ruNote = null;
+    if (rus.length) {
+      const D = C.data, RU = g.resourceUnits;
+      const covered = rus.reduce((n, r) => n + r.tones, 0);
+      const split = RU.tones.value[ruSize];
+      ruNote = h('div', { class: 'notice info' },
+        h('strong', null, 'HE MU / HE TB illustration — not part of an HE SU PPDU. '),
+        `${rus.length} RU${rus.length > 1 ? 's' : ''} × ${sizeLabel(ruSize)} tones`, split ? ` (${split.data} data + ${split.pilot} pilot each)` : '',
+        ` = ${covered} of the ${a.dataTones.N_ST} HE SU subcarriers`,
+        covered < a.dataTones.N_ST ? `; the other ${a.dataTones.N_ST - covered} stay empty in this layout (between RUs and around DC).` : '.',
+        ' In ', term('OFDMA'), ' each user gets one RU (', term('HE MU PPDU', 'HE MU'), ' downlink, ', term('HE TB PPDU', 'HE TB'),
+        ' uplink); an ', term('HE SU PPDU', 'HE SU PPDU'), ' uses the whole channel as one RU. The pilots drawn are the HE SU pilots; each RU has its own pilot positions (not shown). ',
+        h('span', { class: 'badge ' + RU.subcarrierRanges.status }, RU.subcarrierRanges.status), ' ',
+        h('span', { class: 'small muted' }, 'RU ranges: ', RU.subcarrierRanges.evidence.map((id) => D.sources[id].title).join('; ')));
+    }
+    const ltf = a.timeline.items.find((i) => i.ltf);
+    const ltfStep = ltf ? Math.round(a.params.T_DFT_ns / ltf.symbol_ns) : null;
 
     const explain = h('div', { class: 'explain' },
       h('p', null, 'Each bar is one ', term('Subcarrier', 'subcarrier'), ' of a single ', term('OFDM symbol', 'OFDM symbol'),
@@ -115,10 +167,17 @@
           ' Fields using this plan: ', fieldNames.join(', '), '.')
         : h('p', null, 'Fields using this plan: ', fieldNames.join(', '),
           fieldNames.some((n) => /STF/.test(n)) ? ' (the short training fields put energy on only a subset of these subcarriers)' : '',
+          ltf ? ['. The ', term('HE-LTF type', `${ltf.ltf} HE-LTF`), ltfStep > 1 ? ` uses every ${ltfStep === 2 ? 'second' : ltfStep === 4 ? 'fourth' : ltfStep + 'th'} subcarrier, so its symbol repeats after ${V.us(ltf.symbol_ns)} µs and only that is sent` : ' uses every subcarrier for the full symbol'] : '',
           '. Click the OFDM symbol step above to see the same symbol in time.'));
 
-    return h('div', null, head, chips, h('div', { style: { margin: '8px 0' } }, svg), facts, explain);
+    return h('div', null, head, chips, ruBar, h('div', { style: { margin: '8px 0' } }, svg), facts, ruNote, explain);
   };
+
+  /** "2×996" for the RU that covers a whole 160 MHz channel (two 80 MHz halves). */
+  function sizeLabel(size) {
+    const whole = root.WifiCalc.data.generations.HE.resourceUnits.layout160.value.wholeChannel.size;
+    return size === whole ? `2×${whole / 2}` : String(size);
+  }
 
   function rotationLabel(deg) {
     return { 0: '1', 90: 'j', 180: '−1', 270: '−j' }[((deg % 360) + 360) % 360] || deg + '°';

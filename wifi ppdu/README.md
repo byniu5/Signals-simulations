@@ -3,9 +3,14 @@
 Interactive visualisation of how an IEEE 802.11 PPDU is built in frequency and time
 (802.11a/g Non-HT, 802.11n HT, 802.11ac VHT, 802.11ax HE). Everything runs client-side.
 
-**Status:** milestone (c) — 802.11a/g (Non-HT), 802.11n (HT-mixed) and 802.11ac (VHT SU) views: subcarrier map
-(Data field and pre-HT plans), OFDM symbol, PPDU timeline, output panel, check table and glossary. 802.11ax (HE) and
-the transmitter → receiver chain follow in later milestones.
+**Status:** milestone (d) — 802.11a/g (Non-HT), 802.11n (HT-mixed), 802.11ac (VHT SU) and 802.11ax (HE SU) views:
+subcarrier map (Data field and pre-HT / pre-HE plans, plus an RU overlay for HE), OFDM symbol, PPDU timeline (HE:
+RL-SIG, HE-LTF type, LDPC pre-FEC padding with the a-factor, packet extension), output panel, check table and
+glossary. The transmitter → receiver chain and the comparison across generations follow in milestone (e).
+
+Every number carries one of four statuses: *standard-checked*, *supported* (two independent public sources),
+*derived* (arithmetic from checked values) or *unverified* — only the last is shown as a warning.
+See `VERIFICATION.md`.
 
 Open `index.html` (works straight from disk).
 
@@ -37,6 +42,11 @@ node "wifi ppdu/tools/verification-report.js"
 ## Stated simplifications
 
 - **HE coding:** every HE configuration uses LDPC. The standard also allows BCC for MCS 0–9, N_SS ≤ 4 and RU ≤ 242 tones.
+- **HE options left out:** DCM, midambles, the 4x HE-LTF with 0.8 µs GI, the PE disambiguity bit. N_HE-LTF is assumed
+  to follow the VHT mapping (unverified).
+- **HE payload:** no APEP_LENGTH field limit is applied; only the 5484 µs maximum PPDU duration is checked.
+- **RU overlay:** an illustration of HE MU / HE TB PPDUs on top of the HE SU plan; the pilots drawn are the HE SU
+  pilots (each RU has its own, not shown).
 - **No STBC:** m_STBC = 1 everywhere, and there are no extension LTFs.
 - **PPDU formats:** HT-mixed, VHT SU and HE SU only.
 - **VHT payload:** APEP_LENGTH is used as the PSDU length (no MAC end-of-frame padding).

@@ -87,7 +87,8 @@
     /* ---------- below: bits of the Data field ---------- */
     return h('div', null,
       h('div', { class: 'view-head' }, h('h2', null, term('PPDU', 'PPDU'), ' — ', g.ppduFormat, ' (', g.label, ')'),
-        h('span', { class: 'chip mono' }, 'TXTIME ', V.us(total), ' µs')),
+        h('span', { class: 'chip mono' }, 'TXTIME ', V.us(total), ' µs',
+          a.unverified.airtime.length ? [' ', h('span', { class: 'badge unverified', title: 'depends on: ' + a.unverified.airtime.join(', ') }, 'unverified')] : null)),
       svg, dataBits(a), txtimeSum(a));
   };
 
@@ -152,7 +153,7 @@
   /** Bits in the Data field: SERVICE | PSDU | tail | pad = N_SYM · N_DBPS. */
   function dataBits(a) {
     const sy = a.symbols, p = a.params;
-    if (sy.coding !== 'BCC') return h('div');
+    if (sy.coding === 'LDPC') return ldpcBits(a);
     const pf = root.WifiCalc.generation(a.cfg.gen).payloadField;
     const total = sy.N_SYM * p.N_DBPS;
     const parts = [
@@ -174,11 +175,64 @@
       h('div', { class: 'formula' }, term('N_PAD'), ` = ${sy.N_SYM} × ${p.N_DBPS} − ${sy.N_service + sy.payloadBits + sy.N_tail} = ${sy.N_PAD} bits`));
   }
 
+  /**
+   * HE with LDPC: SERVICE | APEP | pre-FEC pad = N_pld, the a-factor of the last
+   * OFDM symbol, the LDPC codeword parameters and the extra-symbol-segment test.
+   */
+  function ldpcBits(a) {
+    const sy = a.symbols, p = a.params, L = sy.ldpc, cfg = a.cfg;
+    const pf = root.WifiCalc.generation(cfg.gen).payloadField;
+    const info = sy.N_service + sy.payloadBits + sy.N_tail;
+    const parts = [
+      { label: 'SERVICE', bits: sy.N_service, color: '#c084fc' },
+      { label: 'APEP', bits: sy.payloadBits, color: '#38bdf8' },
+      { label: 'pre-FEC pad', bits: sy.N_PAD_preFEC, color: '#64748b' },
+    ];
+    const bar = h('div', { class: 'bits', role: 'img', 'aria-label': 'Information bits given to the LDPC encoder' },
+      parts.filter((q) => q.bits > 0).map((q) => h('div', {
+        style: { background: q.color, flex: `${Math.max(q.bits / sy.N_pld, 0.24)} 0 0` }, title: `${q.label}: ${q.bits} bits`,
+      }, `${q.label} ${q.bits}`)));
+    // the last OFDM symbol: segments 1..3 have N_SD,short data subcarriers each, segment 4 the rest
+    const segTones = [sy.N_SD_short, sy.N_SD_short, sy.N_SD_short, p.N_SD - 3 * sy.N_SD_short];
+    const T_PE = a.timeline.T_PE_ns;
+    const last = h('div', { class: 'bits', role: 'img', 'aria-label': `Last OFDM symbol: ${sy.a} of 4 segments carry data` },
+      segTones.map((n, i) => h('div', { style: { background: i < sy.a ? '#38bdf8' : 'repeating-linear-gradient(45deg,#1e293b 0 5px,#334155 5px 10px)',
+        color: i < sy.a ? '#04131c' : '#cbd5e1', flex: `${n} 0 0` }, title: `segment ${i + 1}: ${n} data subcarriers` },
+        i < sy.a ? `segment ${i + 1}: data` : `segment ${i + 1}: post-FEC pad`)));
+    const lim = (x) => fmt(x, 1);
+    return h('div', { class: 'explain' },
+      h('h3', null, 'Bits of the ', term('Data field', 'Data field'), ' — ', term('LDPC'), ' coding'),
+      bar,
+      h('div', { class: 'formula' },
+        term('N_SYM,init'), ` = ⌈(8·`, term(pf.term, pf.name), ' + N_tail + N_service) / ', term('N_DBPS'), `⌉ = ⌈(${sy.payloadBits} + ${sy.N_tail} + ${sy.N_service}) / ${fmt(p.N_DBPS, 3)}⌉ = ${sy.N_SYM_init}`, h('br'),
+        term('N_Excess'), ` = ${info} mod ${fmt(p.N_DBPS, 3)} = ${sy.N_Excess}   ·   `, term('N_SD,short', root.Dom.sym('N_DBPS,short')),
+        ` = ${sy.N_SD_short} × ${p.N_BPSCS} × ${p.N_SS} × ${p.R.text} = ${fmt(sy.N_DBPS_short, 3)}`, h('br'),
+        'a_init = ', sy.N_Excess === 0 ? '4 (N_Excess = 0)' : `min(⌈${sy.N_Excess} / ${fmt(sy.N_DBPS_short, 3)}⌉, 4) = ${sy.a_init}`, h('br'),
+        term('N_pld'), ` = ${sy.N_SYM_init - 1} × ${fmt(p.N_DBPS, 3)} + ${sy.a_init < 4 ? `${sy.a_init} × ${fmt(sy.N_DBPS_short, 3)}` : fmt(p.N_DBPS, 3)} = ${sy.N_pld}   →   `,
+        term('Pre-FEC padding', root.Dom.sym('N_PAD,Pre-FEC')), ` = ${sy.N_pld} − ${info} = ${sy.N_PAD_preFEC} bits`, h('br'),
+        term('N_avbits'), ` = ${sy.N_SYM_init - 1} × ${p.N_CBPS} + ${sy.a_init < 4 ? `${sy.a_init} × ${sy.N_CBPS_short}` : p.N_CBPS} = ${sy.N_avbits}`),
+      h('div', { class: 'formula' },
+        term('N_CW'), ` = ${L.N_CW}, `, term('L_LDPC'), ` = ${L.L_LDPC}, `, term('N_shrt'), ` = ${L.N_shrt}, `, term('N_punc'), ` = ${L.N_punc}`, h('br'),
+        term('LDPC extra symbol segment', 'Extra segment'), ` if N_punc > 0.1·N_CW·L_LDPC·(1 − R) = ${lim(L.puncLimit)} (${L.N_punc > L.puncLimit ? 'yes' : 'no'})`,
+        ` and N_shrt < 1.2·N_punc·R/(1 − R) = ${lim(L.shrtLimit)} (${L.N_shrt < L.shrtLimit ? 'yes' : 'no'}) → `,
+        L.extraSegment ? (sy.a_init === 4 ? 'yes: one more OFDM symbol, a = 1' : `yes: a = a_init + 1 = ${sy.a}`) : 'no',
+        h('br'), term('N_SYM'), ` = ${sy.N_SYM}, `, term('Pre-FEC padding factor', 'a'), ` = ${sy.a}`),
+      h('h3', null, 'Last OFDM symbol — ', term('Pre-FEC padding factor', 'a'), ` = ${sy.a} of 4 segments carry data`),
+      h('div', { class: 'small muted' }, `Its ${p.N_SD} data subcarriers, split into segments of ${sy.N_SD_short}, ${sy.N_SD_short}, ${sy.N_SD_short} and ${segTones[3]} (`, term('N_SD,short'), '):'),
+      last,
+      h('p', { class: 'small muted' }, 'The receiver can stop after segment a: the rest is ', term('Post-FEC padding', 'post-FEC padding'), '. ',
+        term('T_PE'), ` = ${V.us(T_PE)} µs follows from the `, term('Nominal packet padding', 'nominal packet padding'), ` (${cfg.nominalPadding} µs) and a = ${sy.a}.`),
+      a.unverified.ldpcDependent ? h('div', { class: 'notice warn' }, h('strong', null, 'Airtime depends on unverified LDPC constants: '),
+        a.unverified.airtime.filter((d) => d.startsWith('ldpc.')).join(', '), ' (codeword-length thresholds and the extra-segment factors were not found in two sources).') : null);
+  }
+
   /** TXTIME as the sum of the timeline items. */
   function txtimeSum(a) {
     const items = a.timeline.items;
     const terms = items.map((it) => (it.count > 1 ? `${it.count}×${V.us(it.each_ns)}` : V.us(it.dur_ns)));
+    const formula = root.WifiCalc.generation(a.cfg.gen).txtime?.formula;
     return h('div', { class: 'formula' }, term('TXTIME'), ' = ', items.map((i) => i.name).join(' + '), h('br'),
-      '       = ', terms.join(' + '), ` = ${V.us(a.timeline.txtime_ns)} µs`);
+      '       = ', terms.join(' + '), ` = ${V.us(a.timeline.txtime_ns)} µs`,
+      formula ? [h('br'), h('span', { class: 'muted' }, formula.value)] : null);
   }
 })(typeof globalThis !== 'undefined' ? globalThis : this);

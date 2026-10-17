@@ -82,8 +82,8 @@ main { padding: 16px 20px 40px; }
 .chip i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 .seg { display: inline-flex; }
 .seg button { border-radius: 0; font-size: .82rem; }
-.seg button:first-child { border-radius: 8px 0 0 8px; }
-.seg button:last-child { border-radius: 0 8px 8px 0; }
+.seg button:first-of-type { border-radius: 8px 0 0 8px; }
+.seg button:last-of-type { border-radius: 0 8px 8px 0; }
 .seg button[aria-pressed=true] { background: #0e3a52; border-color: var(--accent); }
 svg.diagram { width: 100%; height: auto; display: block; }
 svg.diagram text { fill: var(--text); font: 12px system-ui, sans-serif; }
@@ -115,6 +115,8 @@ svg.constellation { max-width: 200px; }
 .notice { margin-top: 10px; font-size: .82rem; border-radius: 8px; padding: 8px 10px; }
 .notice.warn { border: 1px dashed var(--warn); color: #fde68a; }
 .notice.ok { border: 1px solid rgba(52,211,153,.4); color: #a7f3d0; }
+.notice.info { border: 1px solid rgba(56,189,248,.45); color: #bae6fd; }
+.ru-seg { flex-wrap: wrap; align-items: center; margin-top: 6px; }
 .checks table { width: 100%; border-collapse: collapse; font-size: .82rem; }
 .checks th, .checks td { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
 .checks td.num { font-family: var(--mono); text-align: right; }

@@ -355,6 +355,50 @@ test('pilot sets of every generation are symmetric around DC', () => {
 });
 
 /* ------------------------------------------------------------------------- *
+ *  HE resource units (illustration of HE MU / HE TB): internal consistency
+ * ------------------------------------------------------------------------- */
+test('HE RUs: counts, sizes, no overlap, inside the HE SU plan; the largest RU is the HE SU plan', () => {
+  const RU = D.generations.HE.resourceUnits;
+  const counts = RU.countPerBandwidth.value;
+  for (const bw of [20, 40, 80, 160]) {
+    const su = C.dataToneMap('HE', bw);
+    const used = new Set(su.tones.filter((t) => t.kind === 'data' || t.kind === 'pilot').map((t) => t.k));
+    const sizes = C.ruSizes(bw);
+    for (const size of sizes) {
+      const rus = C.ruLayout(bw, size);
+      if (counts[bw][size] !== undefined) assert.equal(rus.length, counts[bw][size], `${bw} MHz ${size}-tone count`);
+      const seen = new Set();
+      for (const ru of rus) {
+        assert.equal(ru.tones, size, `${bw} MHz ${size}-tone RU ${ru.index} size`);
+        for (const [a, b] of ru.ranges) for (let k = a; k <= b; k++) {
+          assert.ok(!seen.has(k), `${bw} MHz ${size}-tone RUs overlap at ${k}`);
+          assert.ok(used.has(k), `${bw} MHz ${size}-tone RU ${ru.index}: tone ${k} outside the HE SU plan`);
+          seen.add(k);
+        }
+      }
+    }
+    const largest = C.ruLayout(bw, sizes[sizes.length - 1]);
+    assert.equal(largest.length, 1);
+    assert.equal(largest[0].tones, su.N_ST, `${bw} MHz: largest RU = all ${su.N_ST} HE SU tones`);
+    if (RU.tones.value[largest[0].tones]) assert.equal(RU.tones.value[largest[0].tones].data, su.N_SD);
+  }
+  const r80 = C.ruLayout(80, 26), r160 = C.ruLayout(160, 26);
+  assert.deepEqual(r160.map((r) => r.ranges), [...r80.map((r) => r.ranges.map(([a, b]) => [a - 512, b - 512])), ...r80.map((r) => r.ranges.map(([a, b]) => [a + 512, b + 512]))]);
+});
+
+test('HE SU: PE follows the nominal packet padding and a; T_PE is reported even when no PE field is sent', () => {
+  for (const pad of [0, 8, 16]) for (let L = 1; L < 3000; L += 211) {
+    const a = C.analyze({ gen: 'HE', bw: 20, gi: 0.8, ltf: '2x', mcs: 7, payload: L, nominalPadding: pad });
+    const want = D.generations.HE.packetExtension.T_PE.value[pad][a.symbols.a - 1] * 1000;
+    assert.equal(a.timeline.T_PE_ns, want);
+    const pe = a.timeline.items.find((i) => i.kind === 'pe');
+    assert.equal(pe ? pe.dur_ns : 0, want);
+  }
+  const ltf = C.analyze({ gen: 'HE', bw: 20, gi: 0.8, ltf: '1x', nss: 2, mcs: 7, payload: 100 }).timeline.items.find((i) => i.name === 'HE-LTF');
+  assert.deepEqual([ltf.count, ltf.symbol_ns, ltf.gi_ns, ltf.each_ns], [2, 3200, 800, 4000]);
+});
+
+/* ------------------------------------------------------------------------- *
  *  Results report which unverified data they depend on
  * ------------------------------------------------------------------------- */
 test('airtime of every HE configuration is labelled as depending on the unverified LDPC constants', () => {
@@ -422,6 +466,8 @@ test('normalize() keeps configurations inside what each generation allows', () =
   assert.equal(C.normalize({ gen: 'VHT', band: '2.4' }).cfg.band, '5');
   assert.equal(C.normalize({ gen: 'HE', band: '2.4', bw: 80 }).cfg.bw, 40);
   assert.equal(C.normalize({ gen: 'nonHT', nss: 3 }).cfg.nss, 1);
+  assert.equal(C.normalize({ gen: 'HE', gi: 0.8, ltf: '4x' }).cfg.ltf, '2x', 'HE-LTF type not allowed with the GI -> default 2x');
+  assert.equal(C.normalize({ gen: 'HE', gi: 0.8, ltf: '1x' }).cfg.ltf, '1x');
   assert.equal(C.normalize({ gen: 'HT', mod: '256-QAM', R: '5/6' }).cfg.mod, 'BPSK');
   assert.equal(C.normalize({ gen: 'HT', mcs: 7, nss: 2 }).cfg.mcs, 7);
   assert.equal(C.displayMcs(C.normalize({ gen: 'HT', mcs: 7, nss: 2 }).cfg), 15);

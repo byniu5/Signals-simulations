@@ -10,7 +10,7 @@
   const C = root.WifiCalc, D = C.data, V = root.WifiViews;
 
   /* Generations with views in the current milestone; the others are listed but disabled. */
-  const AVAILABLE = { nonHT: true, HT: true, VHT: true, HE: 'milestone (d)' };
+  const AVAILABLE = { nonHT: true, HT: true, VHT: true, HE: true };
   /* Zoom levels, innermost first. */
   const LEVELS = ['subcarriers', 'symbol', 'ppdu'];
   const LEVEL_LABEL = { subcarriers: 'Subcarrier map', symbol: 'OFDM symbol', ppdu: 'PPDU' };
@@ -29,6 +29,7 @@
     const state = {
       cfg: { gen: 'nonHT', band: '5', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', payload: 1500 },
       level: 'subcarriers', symbolIndex: 1, field: 'data', selected: null,
+      ru: null, // RU size of the HE MU / TB overlay on the subcarrier map (null = off)
     };
     let a = C.analyze(state.cfg);
 
@@ -43,7 +44,8 @@
 
     /* ---------- views ---------- */
     const renderer = (level) => (el) => {
-      if (level === 'subcarriers') el.append(V.frequency(a, { field: state.field, onField: (f) => { state.field = f; redraw(); } }));
+      if (level === 'subcarriers') el.append(V.frequency(a, { field: state.field, onField: (f) => { state.field = f; redraw(); },
+        ru: state.ru, onRu: (size) => { state.ru = size; redraw(); } }));
       else if (level === 'symbol') el.append(V.symbol(a, { index: state.symbolIndex, onIndex: (i) => { state.symbolIndex = i; redraw(); }, onZoomIn: (r) => go('subcarriers', r) }));
       else el.append(V.ppdu(a, { selected: state.selected, symbolIndex: state.symbolIndex,
         onField: (name) => { state.selected = name; redraw(); },
@@ -96,7 +98,7 @@
       if (ex) {
         const allowed = C.options(cfg).mcs.filter((m) => m.mcs < cfg.mcs && !C.exclusion(Object.assign({}, cfg, { mcs: m.mcs })));
         const fallback = allowed[allowed.length - 1];
-        adjustNote = `MCS ${cfg.mcs} is not defined for ${cfg.bw} MHz with N_SS = ${cfg.nss} (${ex.status}: ${ex.note}). Using MCS ${fallback.mcs}.`;
+        adjustNote = `MCS ${cfg.mcs} is not defined for ${cfg.bw} MHz with N_SS = ${cfg.nss} (${ex.note}${ex.status === 'unverified' ? ' — unverified' : ''}). Using MCS ${fallback.mcs}.`;
         cfg = C.normalize(Object.assign({}, cfg, { mcs: fallback.mcs, mod: null, R: null })).cfg;
       }
       state.cfg = cfg;
@@ -126,16 +128,23 @@
         select(term('Band'), cfg.band, o.bands.map((b) => ({ value: b, label: g.bands[b].label })), (v) => setCfg({ band: v })),
         select(term('Channel bandwidth'), cfg.bw, o.bandwidths.map((b) => ({ value: b, label: b + ' MHz' })), (v) => setCfg({ bw: Number(v) })),
         select(term('Guard interval'), cfg.gi, o.guardIntervals.map((x) => ({ value: x, label: x + ' µs' })), (v) => setCfg({ gi: Number(v) })),
+        // HE: HE-LTF type, offered only in the combinations with the selected GI that the data file allows
+        o.ltfTypes ? select(term('HE-LTF type'), cfg.ltf, o.ltfTypes.filter((x) => x.gi === cfg.gi).map((x) => ({ value: x.ltf, label: `${x.ltf} HE-LTF` })),
+          (v) => setCfg({ ltf: v })) : null,
         select(term('Constellation mapping', 'Modulation'), cfg.mod, mods.map((m) => ({ value: m, label: m })), (v) => setCfg({ mod: v, R: null, mcs: null })),
         select(term('R', 'Coding rate R'), cfg.R, rates.map((m) => ({ value: m.R, label: rateLabel(m),
           disabled: m.mcs !== null && !!C.exclusion(Object.assign({}, cfg, { mcs: m.mcs })) })), (v) => setCfg({ R: v, mcs: null })),
         select(term('N_SS', 'Spatial streams'), cfg.nss, o.spatialStreams.map((n) => ({ value: n, label: n })), (v) => setCfg({ nss: Number(v) })),
+        o.nominalPadding ? select(term('Nominal packet padding'), cfg.nominalPadding, o.nominalPadding.map((x) => ({ value: x, label: x + ' µs' })),
+          (v) => setCfg({ nominalPadding: Number(v) })) : null,
         h('label', { class: 'ctl' }, h('span', null, pf.label, ' (', term(pf.term, pf.name), ', octets)'),
           h('input', { type: 'number', min: 1, max: maxLen === null ? undefined : maxLen, value: cfg.payload,
             onchange: (e) => setCfg({ payload: Number(e.target.value) || 1 }) }),
           h('div', { class: 'hint' }, maxLen === null ? 'limited by the 5484 µs maximum PPDU duration' : `1 … ${maxLen} octets`)),
         adjustNote ? h('div', { class: 'notice warn' }, adjustNote) : null,
         h('div', { class: 'hint' }, term(g.ppduFormat, g.ppduFormat), ' · ', D.documents[g.bands[cfg.band].doc || g.doc].doc, ', Clause ', D.documents[g.bands[cfg.band].doc || g.doc].clause),
+        g.coding === 'LDPC' ? h('div', { class: 'hint' }, 'Coding: ', term('LDPC'), ' for every configuration (simplification: BCC is also allowed for MCS ≤ ',
+          g.codingRule.value.bccMaxMcs, ', N_SS ≤ ', g.codingRule.value.bccMaxNss, ', RU ≤ ', g.codingRule.value.bccMaxRuTones, ' tones).') : null,
       ].filter(Boolean)); // replaceChildren would print "null" for empty slots
     }
 
