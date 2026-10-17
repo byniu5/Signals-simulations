@@ -6,21 +6,23 @@
  *  appears in here.
  *
  *  Value entries look like
- *      { value, unit?, status, evidence: [sourceId...], clause?, note? }
+ *      { value, unit?, status, evidence: [sourceId...], derivedFrom?: [...], clause?, note? }
  *
- *  status
- *    'verified'    the exact value is stated by at least one public secondary source
- *                  found during research (see `evidence`) AND it matches an independent
- *                  check: a second source, arithmetic, or the value written down in the
- *                  pre-research plan before searching (source id 'plan'), OR it was supplied in
- *                  review (source kind 'reviewer-cited'; the reviewer's citation is in its title).
- *    'unverified'  anything else — please check these against the standard.
+ *  status (only 'unverified' is shown as a warning in the UI)
+ *    'standard-checked'  read in the standard text by the user
+ *    'supported'         >= 2 independent public sources (open-source implementation, IEEE
+ *                        submission, patent, vendor documentation; `origin` of each source in
+ *                        `sources`); standard text not read. Entries the reviewer classified as
+ *                        supported carry the source 'review-3'.
+ *    'derived'           arithmetic from checked values; `derivedFrom` lists the inputs (data paths,
+ *                        or a 'definition: ...' the arithmetic rests on). No input may be unverified.
+ *    'unverified'        anything else — please check these against the standard.
+ *  'plan' (my pre-research expectation) and 'arith' are cross-checks, never counted as sources.
  *
  *  clause
  *    The IEEE text itself could NOT be read: ieee.org / mentor.ieee.org are blocked
  *    from the environment this was built in. Clause / table numbers below are only
- *    those quoted by secondary sources (edition noted) and are therefore never
- *    "verified" — see meta.clauseNumbersRead.
+ *    those quoted by secondary sources (edition noted) — see meta.clauseNumbersRead.
  * ===========================================================================*/
 var WIFI_STANDARDS = {
   meta: {
@@ -46,60 +48,84 @@ var WIFI_STANDARDS = {
    *  Secondary sources used as evidence
    * ------------------------------------------------------------------------- */
   sources: {
-    'plan': { title: 'Value listed in the pre-research plan (prior knowledge), written before searching', kind: 'cross-check' },
-    'arith': { title: 'Arithmetic consequence of other verified values (shown in the note)', kind: 'cross-check' },
-    'ns3-ofdm': { title: 'ns-3 simulator, ofdm-phy.cc (cites IEEE 802.11-2016 cl. 17)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/non-ht/ofdm-phy.cc', kind: 'code' },
-    'ns3-ht': { title: 'ns-3 simulator, ht-phy.cc (cites IEEE 802.11-2016 cl. 19)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/ht/ht-phy.cc', kind: 'code' },
-    'ns3-vht': { title: 'ns-3 simulator, vht-phy.cc (cites IEEE 802.11-2016 cl. 21)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/vht/vht-phy.cc', kind: 'code' },
-    'ns3-he': { title: 'ns-3 simulator, he-phy.cc (cites IEEE 802.11ax-2021 cl. 27)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/he/he-phy.cc', kind: 'code' },
-    'ns3-heru': { title: 'ns-3 simulator, he-ru.cc (cites Tables 27-7..27-9 of IEEE 802.11ax-2021)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/he/he-ru.cc', kind: 'code' },
-    'ns3-txdur': { title: 'ns-3 simulator, tx-duration-test.cc (TXTIME test vectors)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/test/tx-duration-test.cc', kind: 'code' },
-    'keysight-ofdm': { title: 'Keysight 89600 VSA help: 802.11 OFDM Overview', url: 'https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/wlan-ofdm/content/ofdm_80211-overview.htm', kind: 'vendor' },
-    'pat-legacy-sig': { title: 'US patent 10342042 (describes 802.11a SIG tone plan: -26..26, pilots ±7, ±21)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10342042', kind: 'patent' },
-    'pat-ht-vht-pilots': { title: 'US patent 10447448 family (HT 40 MHz and VHT 80/160 MHz pilot indices)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10447448', kind: 'patent' },
-    'pat-he-pilots-242': { title: 'USPTO patent full text returned by web search for the 242-tone RU pilot indices (exact patent number not recorded)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12294541', kind: 'patent' },
-    'pat-he-pilots-80': { title: 'US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410', kind: 'patent' },
-    'ieee-16-0623': { title: 'IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx', kind: 'reviewer-cited' },
-    'mw-hesuconfig': { title: 'MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.', url: 'https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html', kind: 'reviewer-cited' },
-    'review-2': { title: 'Second review pass (2026-10): VHT N_ES rule, N_SD,short table, L-SIG LENGTH rule — supplied by the reviewer', kind: 'reviewer-cited' },
-    'ieee-11-0577': { title: 'IEEE 802.11-11/0577r0 — TGac draft list of excluded VHT-MCS / bandwidth / N_SS combinations (reviewer-cited; not read by the author)', kind: 'reviewer-cited' },
-    'ieee-13-1002': { title: 'IEEE 802.11-13/1002r1, SB2 clause 22 comment resolution — max TXTIME (4095 + 3) x 4/3 + 20 = 5484 µs', url: 'https://mentor.ieee.org/802.11/dcn/13/11-13-1002-01-00ac-sb2-clause-22-comment-resolution.docx', kind: 'ieee-contribution' },
-    'pat-format-detect': { title: 'US patents 10637706 family, 9025428 (HT-SIG QBPSK; VHT-SIG-A1 BPSK and VHT-SIG-A2 QBPSK for format detection)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10637706', kind: 'patent' },
-    'paper-ht-detect': { title: 'A Novel Method to Detect the Frame-Formats in 802.11n (AMEII 2016): HT-SIG rotated 90° relative to L-SIG', url: 'https://atlantis-press.com/proceedings/ameii-16/25854744', kind: 'paper' },
-    'pat-preamble-11a': { title: 'US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972', kind: 'patent' },
-    'pat-phase-rot': { title: 'US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172', kind: 'patent' },
-    'keysight-nonht-dup': { title: 'Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)', url: 'https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm', kind: 'vendor' },
-    'pat-padding': { title: 'US 2022/0053371 A1 (Newracom) and US 12096275 — reproduce the 802.11ax pre-FEC padding equations', url: 'https://patents.google.com/patent/US20220053371A1/en', kind: 'patent' },
-    'pat-nsd-short': { title: 'US 2023/0261784 A1 — extended N_SD,short table for multi-RU (484+242 -> 180, 996+484 -> 360)', url: 'https://patents.google.com/patent/US20230261784A1/en', kind: 'patent' },
-    'pat-pe': { title: 'US 2021/0360472 A1 and US 12598022 — nominal packet padding 0/8/16 us, nominal T_PE 4/8/12/16 us', url: 'https://patents.google.com/patent/US20210360472A1/en', kind: 'patent' },
-    'pat-he-txtime': { title: 'US patent 11576207 — HE SU TXTIME = 20 + T_HE-PREAMBLE + N_SYM*T_SYM + T_PE + SignalExtension', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/11576207', kind: 'patent' },
-    'ieee-16-1411': { title: 'IEEE 802.11-16/1411r1, TXTIME and RXTIME fixes (TGax draft era)', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-1411-01-00ax-txtime-and-rxtime-fixes.docx', kind: 'ieee-contribution' },
-    'ieee-16-1341': { title: 'IEEE 802.11-16/1341r2, CR HE PHY introduction (LTF 3.2/6.4/12.8 us; GI 0.8/1.6/3.2 us)', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-1341-02-00ax-cr-he-phy-introduction-part-2.docx', kind: 'ieee-contribution' },
-    'ieee-18-1460': { title: 'IEEE 802.11-18/1460r1, CR PHY capabilities part 2; and P802.11ax D0.2 cl. 26.3.10.4 (BCC limits)', url: 'https://mentor.ieee.org/802.11/dcn/18/11-18-1460-01-00ax-cr-phy-capabilities-part-2.docx', kind: 'ieee-contribution' },
-    'ieee-07-2077': { title: 'IEEE 802.11-07/2077r2, LB97 PHY equations comment resolution (HT-mixed short GI TXTIME rounding)', url: 'https://mentor.ieee.org/802.11/dcn/07/11-07-2077-02-000n-lb97-phy-equations-comment-resolution.doc', kind: 'ieee-contribution' },
-    'tgbe-ndbps': { title: 'IEEE 802.11 TGbe e-mail reflector: "Ndbps = floor(Ncbps*R)" (802.11be context)', url: 'https://grouper.ieee.org/groups/802/11/email/stds-802-11-tgbe/msg02428.html', kind: 'ieee-reflector' },
-    'keysight-he-su': { title: 'Keysight help: 802.11ax carrier settings SU / Ext SU (GI + HE-LTF combinations)', url: 'https://helpfiles.keysight.com/csg/n5186/Content/WLAN/802_11ax%20Carrier%20Settings%20SU%20Ext%20SU%20NDP.htm', kind: 'vendor' },
-    'silabs-gi-ltf': { title: 'Silicon Labs WiFi91x docs: 802.11ax GI and LTF', url: 'https://docs.silabs.com/wifi91xrcp/2.10.1/wifi91xrcp-developers-guide-wifi-configuration/802-11-ax-gi-and-ltf', kind: 'vendor' },
-    'mw-vht-ppdu': { title: 'MathWorks WLAN Toolbox: VHT PPDU Structure (VHT-SIG-B in SU and MU; cites 802.11-2016 21.3.8.3.6)', url: 'https://www.mathworks.com/help/wlan/gs/vht-ppdu-structure.html', kind: 'vendor' },
-    'mw-duration': { title: 'MathWorks WLAN Toolbox: Packet Size and Duration Dependencies (TXTIME in 19.4.3 / 21.4.3 of 802.11-2016)', url: 'https://www.mathworks.com/help/wlan/gs/packet-size-and-duration-dependencies.html', kind: 'vendor' },
-    'rs-rates': { title: 'Rohde & Schwarz: Wi-Fi data rates (HT/VHT/HE MCS rate tables)', url: 'https://rs-nc.rohde-schwarz.com/en/products/wireless-lan/wi-fi-data-rates', kind: 'vendor' },
-    'cts-ru': { title: 'CTS 160: 802.11ax OFDMA Resource Units (data/pilot split per RU)', url: 'https://www.cleartosend.net/802-11ax-ofdma-resource-units/', kind: 'article' },
-    'wiki-difs': { title: 'Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x aSlotTime, per-PHY table)', url: 'https://en.wikipedia.org/wiki/DCF_Interframe_Space', kind: 'encyclopedia' },
-    'wiki-sifs': { title: 'Wikipedia: Short Interframe Space (10 us at 2.4 GHz, 16 us at 5 GHz)', url: 'https://en.wikipedia.org/wiki/Short_Interframe_Space', kind: 'encyclopedia' },
-    'arxiv-ldpc': { title: 'arXiv 2003.11234, Joint shortening and puncturing for structured LDPC codes (802.11n N_shrt, N_punc)', url: 'https://arxiv.org/pdf/2003.11234', kind: 'paper' },
-    'pat-ldpc-extra': { title: 'US patent 12212413 (LDPC extra-symbol condition with 0.1 and 1.2 factors, longer-codeword variant)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12212413', kind: 'patent' },
+    'plan': { title: 'Value listed in the pre-research plan (prior knowledge), written before searching', kind: 'cross-check', origin: 'cross-check' },
+    'arith': { title: 'Arithmetic consequence of other verified values (shown in the note)', kind: 'cross-check', origin: 'cross-check' },
+    'ns3-ofdm': { title: 'ns-3 simulator, ofdm-phy.cc (cites IEEE 802.11-2016 cl. 17)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/non-ht/ofdm-phy.cc', kind: 'code', origin: 'ns-3' },
+    'ns3-ht': { title: 'ns-3 simulator, ht-phy.cc (cites IEEE 802.11-2016 cl. 19)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/ht/ht-phy.cc', kind: 'code', origin: 'ns-3' },
+    'ns3-vht': { title: 'ns-3 simulator, vht-phy.cc (cites IEEE 802.11-2016 cl. 21)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/vht/vht-phy.cc', kind: 'code', origin: 'ns-3' },
+    'ns3-he': { title: 'ns-3 simulator, he-phy.cc (cites IEEE 802.11ax-2021 cl. 27)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/he/he-phy.cc', kind: 'code', origin: 'ns-3' },
+    'ns3-heru': { title: 'ns-3 simulator, he-ru.cc (cites Tables 27-7..27-9 of IEEE 802.11ax-2021)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/model/he/he-ru.cc', kind: 'code', origin: 'ns-3' },
+    'ns3-txdur': { title: 'ns-3 simulator, tx-duration-test.cc (TXTIME test vectors)', url: 'https://gitlab.com/nsnam/ns-3-dev/-/blob/master/src/wifi/test/tx-duration-test.cc', kind: 'code', origin: 'ns-3' },
+    'keysight-ofdm': { title: 'Keysight 89600 VSA help: 802.11 OFDM Overview', url: 'https://helpfiles.keysight.com/csg/89600B/Webhelp/Subsystems/wlan-ofdm/content/ofdm_80211-overview.htm', kind: 'vendor', origin: 'Keysight' },
+    'pat-legacy-sig': { title: 'US patent 10342042 (describes 802.11a SIG tone plan: -26..26, pilots ±7, ±21)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10342042', kind: 'patent', origin: 'US 10342042' },
+    'pat-ht-vht-pilots': { title: 'US patent 10447448 family (HT 40 MHz and VHT 80/160 MHz pilot indices)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10447448', kind: 'patent', origin: 'US 10447448' },
+    'pat-he-pilots-242': { title: 'USPTO patent full text returned by web search for the 242-tone RU pilot indices (exact patent number not recorded)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12294541', kind: 'patent', origin: 'USPTO (242-tone pilots)' },
+    'pat-he-pilots-80': { title: 'US patents 12167410 and 12587328 — ±18-based pilot set; per review this is the 802.11be (EHT) design, NOT 802.11ax. Kept for reference, not used as evidence.', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12167410', kind: 'patent', origin: 'US 12167410' },
+    'ieee-16-0623': { title: 'IEEE 802.11-16/0623r0, Table 26-32 (TGax draft numbering) — 80 MHz HE pilot indices. Supplied by the reviewer; not read by the author.', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-0623-00-00ax.docx', kind: 'reviewer-cited', origin: 'IEEE 11-16/0623' },
+    'mw-hesuconfig': { title: 'MathWorks WLAN Toolbox: wlanHESUConfig (nominal packet padding and PE durations). Supplied by the reviewer.', url: 'https://www.mathworks.com/help/wlan/ref/wlanhesuconfig.html', kind: 'reviewer-cited', origin: 'MathWorks' },
+    'review-2': { title: 'Second review pass (2026-10): VHT N_ES rule, N_SD,short table, L-SIG LENGTH rule — supplied by the reviewer', kind: 'reviewer-cited', origin: 'reviewer' },
+    'ieee-11-0577': { title: 'IEEE 802.11-11/0577r0 — TGac draft list of excluded VHT-MCS / bandwidth / N_SS combinations (reviewer-cited; not read by the author)', kind: 'reviewer-cited', origin: 'IEEE 11-11/0577' },
+    'ieee-13-1002': { title: 'IEEE 802.11-13/1002r1, SB2 clause 22 comment resolution — max TXTIME (4095 + 3) x 4/3 + 20 = 5484 µs', url: 'https://mentor.ieee.org/802.11/dcn/13/11-13-1002-01-00ac-sb2-clause-22-comment-resolution.docx', kind: 'ieee-contribution', origin: 'IEEE 11-13/1002' },
+    'pat-format-detect': { title: 'US patents 10637706 family, 9025428 (HT-SIG QBPSK; VHT-SIG-A1 BPSK and VHT-SIG-A2 QBPSK for format detection)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10637706', kind: 'patent', origin: 'US 10637706' },
+    'paper-ht-detect': { title: 'A Novel Method to Detect the Frame-Formats in 802.11n (AMEII 2016): HT-SIG rotated 90° relative to L-SIG', url: 'https://atlantis-press.com/proceedings/ameii-16/25854744', kind: 'paper', origin: 'AMEII 2016 paper' },
+    'pat-preamble-11a': { title: 'US patents 7852972 / 8923446 (802.11a training: 10 x 0.8 µs short + 1.6 µs GI + 2 x 3.2 µs long symbols, citing 802.11a-1999 17.3.3)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/7852972', kind: 'patent', origin: 'US 7852972' },
+    'pat-phase-rot': { title: 'US patent 10327172 family (per-20 MHz phase rotation: 40 MHz {1, j}; 80 MHz {1,-1,-1,-1})', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327172', kind: 'patent', origin: 'US 10327172' },
+    'keysight-nonht-dup': { title: 'Keysight help: 802.11ac Non-HT transmission (duplicate per 20 MHz with phase rotation)', url: 'https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ac%20NonHT%20Transmission.htm', kind: 'vendor', origin: 'Keysight' },
+    'pat-padding': { title: 'US 2022/0053371 A1 (Newracom) and US 12096275 — reproduce the 802.11ax pre-FEC padding equations', url: 'https://patents.google.com/patent/US20220053371A1/en', kind: 'patent', origin: 'US 2022/0053371' },
+    'pat-nsd-short': { title: 'US 2023/0261784 A1 — extended N_SD,short table for multi-RU (484+242 -> 180, 996+484 -> 360)', url: 'https://patents.google.com/patent/US20230261784A1/en', kind: 'patent', origin: 'US 2023/0261784' },
+    'pat-pe': { title: 'US 2021/0360472 A1 and US 12598022 — nominal packet padding 0/8/16 us, nominal T_PE 4/8/12/16 us', url: 'https://patents.google.com/patent/US20210360472A1/en', kind: 'patent', origin: 'US 2021/0360472' },
+    'pat-he-txtime': { title: 'US patent 11576207 — HE SU TXTIME = 20 + T_HE-PREAMBLE + N_SYM*T_SYM + T_PE + SignalExtension', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/11576207', kind: 'patent', origin: 'US 11576207' },
+    'ieee-16-1411': { title: 'IEEE 802.11-16/1411r1, TXTIME and RXTIME fixes (TGax draft era)', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-1411-01-00ax-txtime-and-rxtime-fixes.docx', kind: 'ieee-contribution', origin: 'IEEE 11-16/1411' },
+    'ieee-16-1341': { title: 'IEEE 802.11-16/1341r2, CR HE PHY introduction (LTF 3.2/6.4/12.8 us; GI 0.8/1.6/3.2 us)', url: 'https://mentor.ieee.org/802.11/dcn/16/11-16-1341-02-00ax-cr-he-phy-introduction-part-2.docx', kind: 'ieee-contribution', origin: 'IEEE 11-16/1341' },
+    'ieee-18-1460': { title: 'IEEE 802.11-18/1460r1, CR PHY capabilities part 2; and P802.11ax D0.2 cl. 26.3.10.4 (BCC limits)', url: 'https://mentor.ieee.org/802.11/dcn/18/11-18-1460-01-00ax-cr-phy-capabilities-part-2.docx', kind: 'ieee-contribution', origin: 'IEEE 11-18/1460' },
+    'ieee-07-2077': { title: 'IEEE 802.11-07/2077r2, LB97 PHY equations comment resolution (HT-mixed short GI TXTIME rounding)', url: 'https://mentor.ieee.org/802.11/dcn/07/11-07-2077-02-000n-lb97-phy-equations-comment-resolution.doc', kind: 'ieee-contribution', origin: 'IEEE 11-07/2077' },
+    'tgbe-ndbps': { title: 'IEEE 802.11 TGbe e-mail reflector: "Ndbps = floor(Ncbps*R)" (802.11be context)', url: 'https://grouper.ieee.org/groups/802/11/email/stds-802-11-tgbe/msg02428.html', kind: 'ieee-reflector', origin: 'IEEE TGbe reflector' },
+    'keysight-he-su': { title: 'Keysight help: 802.11ax carrier settings SU / Ext SU (GI + HE-LTF combinations)', url: 'https://helpfiles.keysight.com/csg/n5186/Content/WLAN/802_11ax%20Carrier%20Settings%20SU%20Ext%20SU%20NDP.htm', kind: 'vendor', origin: 'Keysight' },
+    'silabs-gi-ltf': { title: 'Silicon Labs WiFi91x docs: 802.11ax GI and LTF', url: 'https://docs.silabs.com/wifi91xrcp/2.10.1/wifi91xrcp-developers-guide-wifi-configuration/802-11-ax-gi-and-ltf', kind: 'vendor', origin: 'Silicon Labs' },
+    'mw-vht-ppdu': { title: 'MathWorks WLAN Toolbox: VHT PPDU Structure (VHT-SIG-B in SU and MU; cites 802.11-2016 21.3.8.3.6)', url: 'https://www.mathworks.com/help/wlan/gs/vht-ppdu-structure.html', kind: 'vendor', origin: 'MathWorks' },
+    'mw-duration': { title: 'MathWorks WLAN Toolbox: Packet Size and Duration Dependencies (TXTIME in 19.4.3 / 21.4.3 of 802.11-2016)', url: 'https://www.mathworks.com/help/wlan/gs/packet-size-and-duration-dependencies.html', kind: 'vendor', origin: 'MathWorks' },
+    'rs-rates': { title: 'Rohde & Schwarz: Wi-Fi data rates (HT/VHT/HE MCS rate tables)', url: 'https://rs-nc.rohde-schwarz.com/en/products/wireless-lan/wi-fi-data-rates', kind: 'vendor', origin: 'Rohde & Schwarz' },
+    'cts-ru': { title: 'CTS 160: 802.11ax OFDMA Resource Units (data/pilot split per RU)', url: 'https://www.cleartosend.net/802-11ax-ofdma-resource-units/', kind: 'article', origin: 'CTS 160 (Clear To Send)' },
+    'wiki-difs': { title: 'Wikipedia: DCF Interframe Space (DIFS = SIFS + 2 x aSlotTime, per-PHY table)', url: 'https://en.wikipedia.org/wiki/DCF_Interframe_Space', kind: 'encyclopedia', origin: 'Wikipedia' },
+    'wiki-sifs': { title: 'Wikipedia: Short Interframe Space (10 us at 2.4 GHz, 16 us at 5 GHz)', url: 'https://en.wikipedia.org/wiki/Short_Interframe_Space', kind: 'encyclopedia', origin: 'Wikipedia' },
+    'arxiv-ldpc': { title: 'arXiv 2003.11234, Joint shortening and puncturing for structured LDPC codes (802.11n N_shrt, N_punc)', url: 'https://arxiv.org/pdf/2003.11234', kind: 'paper', origin: 'arXiv 2003.11234' },
+    'pat-ldpc-extra': { title: 'US patent 12212413 (LDPC extra-symbol condition with 0.1 and 1.2 factors, longer-codeword variant)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12212413', kind: 'patent', origin: 'US 12212413' },
+    'review-3': { title: 'Third review pass (2026-10): status classification of selected entries, supplied by the reviewer', kind: 'reviewer-cited', origin: 'reviewer' },
+    'mw-ppdu-structure': { title: 'MathWorks WLAN Toolbox: Non-HT / HT / VHT / HE PPDU Structure pages (L-LTF 1.6 + 2 x 3.2 µs, HT-STF 4 µs, VHT-STF 4 µs, VHT-SIG-A two symbols)', url: 'https://www.mathworks.com/help/wlan/gs/ht-ppdu-structure.html', kind: 'vendor', origin: 'MathWorks' },
+    'mw-lsig': { title: 'MathWorks WLAN Toolbox: wlanLSIG / Non-HT PPDU Structure (24-bit L-SIG layout; RATE 1101 = 6 Mb/s in HT and VHT PPDUs)', url: 'https://www.mathworks.com/help/wlan/gs/non-ht-ppdu-structure.html', kind: 'vendor', origin: 'MathWorks' },
+    'pat-he-durations': { title: 'US patent 10327246 (L-STF 8 µs, L-SIG 4 µs, RL-SIG 4 µs, HE-SIG-A 2 or 4 symbols x 4 µs, HE-STF 4 or 8 µs)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10327246', kind: 'patent', origin: 'US 10327246' },
+    'keysight-he-structure': { title: 'Keysight help: 802.11ax Signal Structure (HE TB PPDU HE-STF 8 µs; other fields as HE SU)', url: 'https://helpfiles.keysight.com/csg/n7617/Content/Main/802.11ax%20Signal%20Structure.htm', kind: 'vendor', origin: 'Keysight' },
+    'pat-lsig-bits': { title: 'US patent 9882754 (L-SIG: 4-bit rate, reserved bit, 12-bit length, even parity, 6 tail bits)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9882754', kind: 'patent', origin: 'US 9882754' },
+    'pat-lsig-length': { title: 'US patent 12150075: LENGTH = ceil((TXTIME − SignalExtension − 20)/4)·RATE/8·4 − 3 − m (m only for HE)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12150075', kind: 'patent', origin: 'US 12150075' },
+    'warp-ref': { title: 'WARP 802.11 reference design, calc_phy_preamble.m (open source): HT L-SIG at 6 Mb/s with LENGTH matching the HT duration', url: 'https://warpproject.org/trac/browser/ReferenceDesigns/w3_802.11/sysgen/wlan_phy_tx_pmd/util/calc_phy_preamble.m', kind: 'code', origin: 'WARP project' },
+    'ieee-17-0398': { title: 'IEEE 802.11-17/0398r1, comment resolutions for HE preamble: L-SIG LENGTH mod 3 = 1 for HE SU / HE TB (m = 2), = 2 for HE MU / HE ER SU (m = 1)', url: 'https://mentor.ieee.org/802.11/dcn/17/11-17-0398-01-00ax-11ax-comment-resolutions-for-he-preamble.docx', kind: 'ieee-contribution', origin: 'IEEE 11-17/0398' },
+    'pat-he-mod3': { title: 'US patent 10374767 (L_LENGTH mod 3 indicates HE SU/TB vs HE MU/ER SU)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/10374767', kind: 'patent', origin: 'US 10374767' },
+    'ibwave-wifi6': { title: 'iBwave Wireless Standards Wi-Fi 6 poster (HE data subcarriers 234/468/980/1960, pilots 8/16/16/32)', url: 'https://www.ibwave.com/storage/app/media/pdf/posters/iBwave-Wireless-Standards-Wi-Fi-6-Poster-1.pdf', kind: 'vendor', origin: 'iBwave' },
+    'vocal-11a': { title: 'VOCAL Technologies 802.11a overview: rate table (6–54 Mb/s with modulation, R, N_CBPS, N_DBPS) and 16-bit SERVICE field', url: 'https://ftp.unpad.ac.id/orari/library/library-ref-eng/ref-eng-2/physical/wireless/80211a.pdf', kind: 'vendor', origin: 'VOCAL Technologies' },
+    'unpad-11a': { title: '802.11a tutorial document (ftp.unpad.ac.id): 10 short training symbols of 0.8 µs; 2 long symbols of 3.2 µs + 1.6 µs GI', url: 'https://ftp.unpad.ac.id/orari/library/library-ref-eng/ref-eng-2/physical/wireless/80211a.doc', kind: 'article', origin: '802.11a tutorial (unpad mirror)' },
+    'mw-hdl-conv': { title: 'MathWorks Wireless HDL Toolbox: Convolutional Encoder (Wi-Fi 802.11a/b/g/n/ac; terminated mode appends constraint length − 1 = 6 zero bits)', url: 'https://www.mathworks.com/help/wireless-hdl/ref/convolutionalencoder.html', kind: 'vendor', origin: 'MathWorks' },
+    'mw-vhtltf': { title: 'MathWorks WLAN Toolbox: wlanVHTLTF (N_VHT-LTF = 1, 2, 4, 4, 6, 6, 8, 8 for 1–8 streams; 4 µs per symbol) and wlanHTLTFDemodulate (HT-LTF 4 µs, one, two or four HT-LTFs)', url: 'https://www.mathworks.com/help/wlan/ref/wlanvhtltf.html', kind: 'vendor', origin: 'MathWorks' },
+    'arxiv-1301': { title: 'arXiv 1301.4691, Cross-layer optimization for next generation Wi-Fi (VHT 20 MHz rates; short-GI rates = long-GI rates x 10/9)', url: 'https://arxiv.org/pdf/1301.4691', kind: 'paper', origin: 'arXiv 1301.4691' },
+    'pat-vht-siga': { title: 'US patent 8718191 (second VHT-SIG-A symbol rotated by 90° for VHT auto-detection)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/8718191', kind: 'patent', origin: 'US 8718191' },
+    'ieee-draft-d02': { title: 'IEEE P802.11ax D0.2 (2016) 26.3.10.4: BCC limited to N_SS <= 4, MCS 0-9; mandatory for RU <= 242 tones (draft text, as quoted by search results)', kind: 'ieee-draft', origin: 'IEEE P802.11ax D0.2' },
+    'pat-padding-mu': { title: 'US patents 11245559 / 11689406 (padding and packet extension for DL MU: per-user pre-FEC padding with the common a-factor)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/11245559', kind: 'patent', origin: 'US 11245559' },
+    'pat-pre-post-fec': { title: 'US patent 12119929 (four pre-FEC padding boundaries; a-factor 1..4)', url: 'https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/12119929', kind: 'patent', origin: 'US 12119929' },
+    'keysight-89601': { title: 'Keysight 89601 VSA technical overview (802.11ax subcarrier spacing 78.125 kHz)', url: 'https://docs.alltest.net/manual/Alltest-Agilent-Keysight-89601EVMC-TechnicalOverview-30607-.pdf', kind: 'vendor', origin: 'Keysight' },
+    'pat-vht-20': { title: 'US patent 10461978 (802.11ac 20 MHz: 52 data + 4 pilot subcarriers)', url: 'https://patents.google.com/patent/US10461978', kind: 'patent', origin: 'US 10461978' },
+    'ibwave-11': { title: 'iBwave Wireless Standards 802.11 poster (802.11ac 80 MHz: 234 data, 8 pilot, 14 unused subcarriers)', url: 'https://www.ibwave.com/storage/app/media/pdf/posters/iBwave-Wireless-Standards-802.11.pdf', kind: 'vendor', origin: 'iBwave' },
+    'tub-ofdm': { title: 'TU Berlin telecom exercises (802.11ac non-null subcarriers: 56/64, 114/128, 242/256, 484/512)', url: 'https://platform.commit.tu-berlin.de/en/book/telecom/chapter/ch25/section/exercises', kind: 'course', origin: 'TU Berlin' },
   },
 
   /* ---------------------------------------------------------------------------
    *  Constellations: N_BPSCS = number of coded bits per subcarrier per stream
    * ------------------------------------------------------------------------- */
   modulations: {
-    'BPSK':     { N_BPSCS: { value: 1,  status: 'verified', evidence: ['arith', 'plan'], note: 'log2(2)' } },
-    'QPSK':     { N_BPSCS: { value: 2,  status: 'verified', evidence: ['arith', 'plan'], note: 'log2(4)' } },
-    '16-QAM':   { N_BPSCS: { value: 4,  status: 'verified', evidence: ['arith', 'plan'], note: 'log2(16)' } },
-    '64-QAM':   { N_BPSCS: { value: 6,  status: 'verified', evidence: ['arith', 'plan'], note: 'log2(64)' } },
-    '256-QAM':  { N_BPSCS: { value: 8,  status: 'verified', evidence: ['arith', 'plan'], note: 'log2(256)' } },
-    '1024-QAM': { N_BPSCS: { value: 10, status: 'verified', evidence: ['arith', 'plan'], note: 'log2(1024)' } },
+    'BPSK':     { N_BPSCS: { value: 1,  status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(2)' } },
+    'QPSK':     { N_BPSCS: { value: 2,  status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(4)' } },
+    '16-QAM':   { N_BPSCS: { value: 4,  status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(16)' } },
+    '64-QAM':   { N_BPSCS: { value: 6,  status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(64)' } },
+    '256-QAM':  { N_BPSCS: { value: 8,  status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(256)' } },
+    '1024-QAM': { N_BPSCS: { value: 10, status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['definition: N_BPSCS = log2(M) for an M-point constellation'], note: 'log2(1024)' } },
   },
 
   /* MCS index -> (modulation, coding rate R). HT uses index 0-7 per spatial stream
@@ -119,8 +145,7 @@ var WIFI_STANDARDS = {
       { mcs: 10, mod: '1024-QAM', R: '3/4' },
       { mcs: 11, mod: '1024-QAM', R: '5/6' },
     ],
-    status: 'verified', evidence: ['rs-rates', 'plan'],
-    note: 'Cross-checked through the rate check table (rates reproduce the published HT/VHT/HE tables).',
+    status: 'supported', evidence: ['rs-rates', 'plan', 'ns3-vht'], note: 'ns-3 defines the same MCS -> (modulation, R) modes; its TXTIME vectors at MCS 0, 6-9, 11 depend on them and are reproduced by the tests. Rates reproduce the R&S tables.',
   },
 
   /* ---------------------------------------------------------------------------
@@ -130,13 +155,13 @@ var WIFI_STANDARDS = {
    *  rotation to keep the peak-to-average power ratio down.
    * ------------------------------------------------------------------------- */
   legacy: {
-    subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['keysight-ofdm', 'arith', 'plan'], note: '20 MHz / 64' },
-    fftSizePer20MHz: { value: 64, status: 'verified', evidence: ['keysight-ofdm', 'plan'] },
-    occupied: { value: [[-26, -1], [1, 26]], status: 'verified', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
-    pilots: { value: [-21, -7, 7, 21], status: 'verified', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
+    subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'derived', evidence: ['keysight-ofdm', 'arith', 'plan'], derivedFrom: ['legacy.fftSizePer20MHz', 'definition: 20 MHz channel'], note: '20 MHz / 64' },
+    fftSizePer20MHz: { value: 64, status: 'supported', evidence: ['keysight-ofdm', 'plan', 'tub-ofdm'] },
+    occupied: { value: [[-26, -1], [1, 26]], status: 'supported', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
+    pilots: { value: [-21, -7, 7, 21], status: 'supported', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
     subchannelOffsets: {
       value: { 20: [0], 40: [-32, 32], 80: [-96, -32, 32, 96], 160: [-224, -160, -96, -32, 32, 96, 160, 224] },
-      status: 'verified', evidence: ['arith', 'keysight-nonht-dup'],
+      status: 'derived', evidence: ['arith', 'keysight-nonht-dup'], derivedFrom: ['legacy.fftSizePer20MHz'],
       note: '20 MHz subchannel = 64 subcarriers of 312.5 kHz; centres at odd multiples of 32.',
     },
     phaseRotationDeg: {
@@ -164,16 +189,16 @@ var WIFI_STANDARDS = {
       spatialStreams: [1],
       coding: 'BCC',
       ofdm: {
-        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['keysight-ofdm', 'arith', 'plan'] },
-        T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'arith', 'plan'], note: '1 / 312.5 kHz; ns-3: symbol 4 µs = 3.2 + 0.8' },
-        guardIntervals: { value: [0.8], unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'] },
-        fftSize: { value: { 20: 64 }, status: 'verified', evidence: ['keysight-ofdm', 'plan'] },
+        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'derived', evidence: ['keysight-ofdm', 'arith', 'plan'], derivedFrom: ['generations.nonHT.ofdm.fftSize', 'definition: 20 MHz channel'] },
+        T_DFT: { value: 3.2, unit: 'µs', status: 'derived', evidence: ['ns3-ofdm', 'arith', 'plan'], derivedFrom: ['generations.nonHT.ofdm.subcarrierSpacingKHz'], note: '1 / 312.5 kHz; ns-3: symbol 4 µs = 3.2 + 0.8' },
+        guardIntervals: { value: [0.8], unit: 'µs', status: 'supported', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'] },
+        fftSize: { value: { 20: 64 }, status: 'supported', evidence: ['keysight-ofdm', 'plan', 'tub-ofdm'] },
       },
       toneplan: {
         20: {
-          occupied: { value: [[-26, -1], [1, 26]], status: 'verified', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
-          pilots: { value: [-21, -7, 7, 21], status: 'verified', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
-          N_SD: { value: 48, status: 'verified', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'] },
+          occupied: { value: [[-26, -1], [1, 26]], status: 'supported', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
+          pilots: { value: [-21, -7, 7, 21], status: 'supported', evidence: ['pat-legacy-sig', 'keysight-ofdm', 'plan'] },
+          N_SD: { value: 48, status: 'supported', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'] },
         },
       },
       /* 802.11a has no MCS index; the SIGNAL field carries a 4-bit RATE. */
@@ -188,27 +213,27 @@ var WIFI_STANDARDS = {
           { rateMbps: 48, mod: '64-QAM', R: '2/3' },
           { rateMbps: 54, mod: '64-QAM', R: '3/4' },
         ],
-        status: 'verified', evidence: ['ns3-ofdm', 'plan'],
+        status: 'supported', evidence: ['ns3-ofdm', 'plan', 'vocal-11a'],
       },
       lsigBits: {
         value: [{ name: 'RATE', bits: 4 }, { name: 'Reserved', bits: 1 }, { name: 'LENGTH', bits: 12 }, { name: 'Parity', bits: 1 }, { name: 'Tail', bits: 6 }],
-        status: 'unverified', evidence: ['plan'], note: '24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers).',
+        status: 'supported', evidence: ['plan', 'mw-lsig', 'pat-lsig-bits', 'review-3'], note: '24 bits = one BPSK rate-1/2 OFDM symbol (48 coded bits on 48 data subcarriers).',
       },
-      maxPsduOctets: { value: 4095, unit: 'octet', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'plan'], note: 'largest value of the 12-bit LENGTH field (used in the 5484 µs maximum-TXTIME derivation)' },
-      payloadField: { name: 'LENGTH', term: 'LENGTH', label: 'PSDU length' },
+      maxPsduOctets: { value: 4095, unit: 'octet', status: 'derived', evidence: ['ieee-13-1002', 'mw-duration', 'plan', 'arith', 'review-3'], derivedFrom: ['generations.nonHT.lsigBits'], note: '2^12 − 1: largest value of the 12-bit LENGTH field' },
+      payloadField: { name: 'LENGTH', term: 'LENGTH', label: 'PSDU length', max: 'maxPsduOctets' },
       dataField: {
-        N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'SERVICE field' },
-        N_tail: { value: 6, unit: 'bit', status: 'verified', evidence: ['ns3-ofdm', 'plan'], note: 'BCC tail per encoder' },
+        N_service: { value: 16, unit: 'bit', status: 'supported', evidence: ['ns3-ofdm', 'plan', 'vocal-11a'], note: 'SERVICE field' },
+        N_tail: { value: 6, unit: 'bit', status: 'supported', evidence: ['ns3-ofdm', 'plan', 'mw-hdl-conv'], note: 'BCC tail per encoder' },
       },
       fields: [
         { name: 'L-STF', alias: 'short training field (Clause 17: PHY preamble, short training symbols)', toneplan: 'legacy',
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan'] },
-          structure: { value: { shortTrainingSymbols: 10, each: 0.8 }, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'plan'] } },
+          duration: { value: 8, unit: 'µs', status: 'supported', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan', 'pat-he-durations'] },
+          structure: { value: { shortTrainingSymbols: 10, each: 0.8 }, unit: 'µs', status: 'supported', evidence: ['pat-preamble-11a', 'plan', 'unpad-11a'] } },
         { name: 'L-LTF', alias: 'long training field (Clause 17: PHY preamble, long training symbols)', toneplan: 'legacy',
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan'] },
-          structure: { value: { gi2: 1.6, longTrainingSymbols: 2, each: 3.2 }, unit: 'µs', status: 'verified', evidence: ['pat-preamble-11a', 'plan'] } },
+          duration: { value: 8, unit: 'µs', status: 'supported', evidence: ['pat-preamble-11a', 'ns3-ofdm', 'plan', 'mw-ppdu-structure'] },
+          structure: { value: { gi2: 1.6, longTrainingSymbols: 2, each: 3.2 }, unit: 'µs', status: 'supported', evidence: ['pat-preamble-11a', 'plan', 'unpad-11a', 'mw-ppdu-structure'] } },
         { name: 'L-SIG', alias: 'SIGNAL field (Clause 17 name)', toneplan: 'legacy',
-          duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan'], note: 'one OFDM symbol, BPSK rate 1/2' } },
+          duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-ofdm', 'keysight-ofdm', 'plan', 'pat-he-durations'], note: 'one OFDM symbol, BPSK rate 1/2' } },
         { name: 'Data', kind: 'data' },
       ],
     },
@@ -224,52 +249,51 @@ var WIFI_STANDARDS = {
       spatialStreams: [1, 2, 3, 4],
       coding: 'BCC',
       ofdm: {
-        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['arith', 'plan'], note: '40 MHz / 128 = 20 MHz / 64' },
-        T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: 'ns-3: symbol = 3200 ns + GI' },
-        guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: '0.4 µs = short GI' },
-        fftSize: { value: { 20: 64, 40: 128 }, status: 'verified', evidence: ['arith', 'plan'] },
+        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['legacy.subcarrierSpacingKHz'], note: '40 MHz / 128 = 20 MHz / 64' },
+        T_DFT: { value: 3.2, unit: 'µs', status: 'derived', evidence: ['ns3-ht', 'plan', 'arith'], derivedFrom: ['generations.HT.ofdm.subcarrierSpacingKHz'], note: 'ns-3: symbol = 3200 ns + GI' },
+        guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'supported', evidence: ['ns3-ht', 'plan', 'arxiv-1301'], note: '0.4 µs = short GI; short-GI rates are long-GI rates x 10/9 (= 4.0/3.6), arxiv-1301.' },
+        fftSize: { value: { 20: 64, 40: 128 }, status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['generations.HT.ofdm.subcarrierSpacingKHz', 'definition: channel bandwidth'] },
       },
       toneplan: {
         20: {
-          occupied: { value: [[-28, -1], [1, 28]], status: 'verified', evidence: ['arith', 'plan'], note: '52 data + 4 pilots = 56 = ±1..±28 with one DC null' },
+          occupied: { value: [[-28, -1], [1, 28]], status: 'derived', evidence: ['arith', 'plan', 'tub-ofdm'], derivedFrom: ['generations.HT.toneplan.20.N_SD', 'definition: N_ST = 56 (52 data + 4 pilots, tub-ofdm) around one DC subcarrier'], note: '52 data + 4 pilots = 56 = ±1..±28 with one DC null' },
           pilots: { value: [-21, -7, 7, 21], status: 'unverified', evidence: ['plan'], note: 'same positions as Non-HT; no source found for HT 20 MHz specifically' },
-          N_SD: { value: 52, status: 'verified', evidence: ['ns3-ht', 'plan'] },
+          N_SD: { value: 52, status: 'supported', evidence: ['ns3-ht', 'plan', 'pat-vht-20'] },
         },
         40: {
-          occupied: { value: [[-58, -2], [2, 58]], status: 'verified', evidence: ['arith', 'plan'], note: '108 + 6 = 114 = ±2..±58 with 3 DC nulls' },
-          pilots: { value: [-53, -25, -11, 11, 25, 53], status: 'verified', evidence: ['pat-ht-vht-pilots', 'plan'] },
-          N_SD: { value: 108, status: 'verified', evidence: ['ns3-ht', 'plan'] },
+          occupied: { value: [[-58, -2], [2, 58]], status: 'derived', evidence: ['arith', 'plan', 'tub-ofdm'], derivedFrom: ['generations.HT.toneplan.40.N_SD', 'definition: N_ST = 114 (108 + 6, tub-ofdm) around 3 DC subcarriers'], note: '108 + 6 = 114 = ±2..±58 with 3 DC nulls' },
+          pilots: { value: [-53, -25, -11, 11, 25, 53], status: 'unverified', evidence: ['pat-ht-vht-pilots', 'plan'] },
+          N_SD: { value: 108, status: 'supported', evidence: ['ns3-ht', 'plan', 'tub-ofdm'], note: 'ns-3: 108; TU Berlin: 114 non-null of 128 (= 108 + 6 pilots).' },
         },
       },
       maxMcsPerStream: 7,
-      N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'verified', evidence: ['ns3-ht', 'plan'],
-        note: 'Number of HT-LTFs for N_STS (no STBC, no extension LTFs).' },
+      N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'supported', evidence: ['ns3-ht', 'plan', 'mw-vhtltf'], note: 'ns-3 mapping; MathWorks: one, two or four HT-LTFs.' },
       encoders: {
-        value: { ndbpsPerEncoder: 1080 }, status: 'unverified', evidence: ['review-2', 'ns3-ht'],
+        value: { ndbpsPerEncoder: 1080 }, status: 'derived', evidence: ['review-2', 'ns3-ht', 'arith', 'review-3'], derivedFrom: ['mcsTable', 'generations.HT.toneplan.20.N_SD', 'generations.HT.toneplan.40.N_SD'],
         note: 'N_ES = 2 when N_DBPS > 1080 (= ceil(N_DBPS / 1080) for N_SS <= 4). ns-3\'s 320/350 Mb/s rate thresholds give the same N_ES for every HT MCS with N_SS <= 4.',
       },
-      maxPsduOctets: { value: 65535, unit: 'octet', status: 'unverified', evidence: ['plan'], note: '16-bit HT Length subfield of HT-SIG' },
-      payloadField: { name: 'HT Length', term: 'HT Length', label: 'PSDU length' },
+      maxPsduOctets: { value: 65535, unit: 'octet', status: 'supported', evidence: ['plan', 'review-3'], note: '16-bit HT Length subfield of HT-SIG' },
+      payloadField: { name: 'HT Length', term: 'HT Length', label: 'PSDU length', max: 'maxPsduOctets' },
       dataField: {
-        N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-ht', 'plan'] },
-        N_tail: { value: 6, unit: 'bit per encoder', status: 'verified', evidence: ['ns3-ht', 'plan'], note: '6 x N_ES (ns-3: equation 19-32)' },
+        N_service: { value: 16, unit: 'bit', status: 'supported', evidence: ['ns3-ht', 'plan', 'vocal-11a'], note: 'Same SERVICE field as Clause 17; ns-3 uses 16 bits for every OFDM-based PHY.' },
+        N_tail: { value: 6, unit: 'bit per encoder', status: 'supported', evidence: ['ns3-ht', 'plan', 'mw-hdl-conv'], note: '6 x N_ES (ns-3: equation 19-32)' },
       },
       txtime: {
-        shortGiRounding: { value: true, status: 'verified', evidence: ['ieee-07-2077', 'mw-duration', 'plan'],
+        shortGiRounding: { value: true, status: 'supported', evidence: ['ieee-07-2077', 'mw-duration', 'plan'],
           note: 'HT-mixed: with short GI the data duration in TXTIME is rounded up to a multiple of 4 µs to align ' +
             'with legacy symbol boundaries. (ns-3 does not apply this rounding.)' },
-        legacySymbol: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] },
+        legacySymbol: { value: 4, unit: 'µs', status: 'derived', evidence: ['ns3-ht', 'plan', 'arith'], derivedFrom: ['generations.nonHT.ofdm.T_DFT', 'generations.nonHT.ofdm.guardIntervals'] },
       },
       fields: [
         { name: 'L-STF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-LTF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-SIG', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'HT-SIG', toneplan: 'legacy', symbols: 2,
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'], note: 'HT-SIG1 + HT-SIG2' },
-          modulation: { value: ['QBPSK', 'QBPSK'], status: 'verified', evidence: ['paper-ht-detect', 'pat-format-detect', 'plan'],
+          duration: { value: 8, unit: 'µs', status: 'unverified', evidence: ['ns3-ht', 'plan'], note: 'HT-SIG1 + HT-SIG2' },
+          modulation: { value: ['QBPSK', 'QBPSK'], status: 'supported', evidence: ['paper-ht-detect', 'pat-format-detect', 'plan'],
             note: 'BPSK rotated by 90° relative to L-SIG: lets a receiver recognise an HT-mixed PPDU right after L-SIG.' } },
-        { name: 'HT-STF', duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] } },
-        { name: 'HT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] } },
+        { name: 'HT-STF', duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-ht', 'plan', 'mw-ppdu-structure'] } },
+        { name: 'HT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-ht', 'plan', 'mw-vhtltf'] } },
         { name: 'Data', kind: 'data' },
       ],
     },
@@ -282,34 +306,34 @@ var WIFI_STANDARDS = {
       spatialStreams: [1, 2, 3, 4],
       coding: 'BCC',
       ofdm: {
-        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'verified', evidence: ['arith', 'plan'] },
-        T_DFT: { value: 3.2, unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] },
-        guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'verified', evidence: ['ns3-ht', 'plan'] },
-        fftSize: { value: { 20: 64, 40: 128, 80: 256, 160: 512 }, status: 'verified', evidence: ['arith', 'plan'] },
+        subcarrierSpacingKHz: { value: 312.5, unit: 'kHz', status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['legacy.subcarrierSpacingKHz'] },
+        T_DFT: { value: 3.2, unit: 'µs', status: 'derived', evidence: ['ns3-ht', 'plan', 'arith'], derivedFrom: ['generations.VHT.ofdm.subcarrierSpacingKHz'] },
+        guardIntervals: { value: [0.8, 0.4], unit: 'µs', status: 'supported', evidence: ['ns3-ht', 'plan', 'arxiv-1301'] },
+        fftSize: { value: { 20: 64, 40: 128, 80: 256, 160: 512 }, status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['generations.VHT.ofdm.subcarrierSpacingKHz', 'definition: channel bandwidth'] },
       },
       toneplan: {
         20: { sameAs: 'HT' },
         40: { sameAs: 'HT' },
         80: {
-          occupied: { value: [[-122, -2], [2, 122]], status: 'verified', evidence: ['arith', 'plan'], note: '234 + 8 = 242 = ±2..±122 with 3 DC nulls' },
-          pilots: { value: [-103, -75, -39, -11, 11, 39, 75, 103], status: 'verified', evidence: ['pat-ht-vht-pilots', 'plan'] },
-          N_SD: { value: 234, status: 'verified', evidence: ['ns3-vht', 'plan'] },
+          occupied: { value: [[-122, -2], [2, 122]], status: 'derived', evidence: ['arith', 'plan', 'ibwave-11'], derivedFrom: ['generations.VHT.toneplan.80.N_SD', 'definition: N_ST = 242 (234 + 8, ibwave-11) around 3 DC subcarriers'], note: '234 + 8 = 242 = ±2..±122 with 3 DC nulls' },
+          pilots: { value: [-103, -75, -39, -11, 11, 39, 75, 103], status: 'unverified', evidence: ['pat-ht-vht-pilots', 'plan'] },
+          N_SD: { value: 234, status: 'supported', evidence: ['ns3-vht', 'plan', 'ibwave-11'] },
         },
         160: {
           occupied: { value: [[-250, -130], [-126, -6], [6, 126], [130, 250]], status: 'unverified', evidence: ['plan'],
             note: 'Two 80 MHz plans at ±128 (4 x 121 = 484 = 468 + 16): consistent arithmetic, but index ranges not found in a source.' },
-          pilots: { value: [-231, -203, -167, -139, -117, -89, -53, -25, 25, 53, 89, 117, 139, 167, 203, 231], status: 'verified', evidence: ['pat-ht-vht-pilots', 'plan'] },
-          N_SD: { value: 468, status: 'verified', evidence: ['ns3-vht', 'plan'] },
+          pilots: { value: [-231, -203, -167, -139, -117, -89, -53, -25, 25, 53, 89, 117, 139, 167, 203, 231], status: 'unverified', evidence: ['pat-ht-vht-pilots', 'plan'] },
+          N_SD: { value: 468, status: 'supported', evidence: ['ns3-vht', 'plan', 'tub-ofdm'], note: 'ns-3: 468; TU Berlin: 484 non-null of 512 (= 468 + 16 pilots).' },
         },
       },
       maxMcs: 9,
       /* MCS / bandwidth / N_SS combinations that the VHT MCS tables do not define */
       exclusions: [
-        { bw: 20, mcs: 9, nss: [1, 2, 4], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
-        { bw: 80, mcs: 6, nss: [3], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
-        { bw: 160, mcs: 9, nss: [3], status: 'unverified', evidence: ['ieee-11-0577', 'ns3-vht'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
+        { bw: 20, mcs: 9, nss: [1, 2, 4], status: 'supported', evidence: ['ieee-11-0577', 'ns3-vht', 'review-3'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
+        { bw: 80, mcs: 6, nss: [3], status: 'supported', evidence: ['ieee-11-0577', 'ns3-vht', 'review-3'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
+        { bw: 160, mcs: 9, nss: [3], status: 'supported', evidence: ['ieee-11-0577', 'ns3-vht', 'review-3'], note: 'supported by IEEE 11-11/0577r0 draft list + ns-3 N_ES rule; standard table not read' },
       ],
-      N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'verified', evidence: ['ns3-ht', 'plan'],
+      N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'supported', evidence: ['ns3-ht', 'plan', 'mw-vhtltf'],
         note: 'Number of VHT-LTFs for N_STS 1-4 (ns-3 reuses the HT mapping).' },
       encoders: {
         value: {
@@ -322,32 +346,36 @@ var WIFI_STANDARDS = {
             { bw: 160, nss: 7, mcs: 9, N_ES: 12 },
           ],
         },
-        status: 'verified', evidence: ['review-2', 'ns3-vht'],
+        status: 'supported', evidence: ['review-2', 'ns3-vht', 'review-3'],
         note: 'N_ES = ceil(N_DBPS / 2160) plus the explicit overrides of ns-3 m_exceptionsMap (derived there from Tables 21-30..21-61 of 802.11-2016). Same as ns-3\'s 540 / 600 Mb/s rate rule (N_DBPS/4/540 = N_DBPS/3.6/600 = N_DBPS/2160).',
       },
-      maxPsduOctets: { value: 1048575, unit: 'octet', status: 'unverified', evidence: ['plan'], note: 'APEP_LENGTH upper bound; in practice the 5484 µs maximum PPDU duration limits it first' },
-      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length' },
+      maxApepOctets: { value: 1048575, unit: 'octet', status: 'supported', evidence: ['plan', 'review-3'], note: 'APEP_LENGTH upper bound (2^20 − 1)' },
+      maxPsduOctets: { value: 4692480, unit: 'octet', status: 'derived', evidence: ['arith', 'review-3'],
+        derivedFrom: ['lsig.maxPpdu', 'generations.VHT.fields[VHT-SIG-B].duration', 'generations.VHT.ofdm.guardIntervals',
+          'definition: 68 µs VHT preamble with 8 VHT-LTFs; N_DBPS = 24960 at 160 MHz, 8 streams, 256-QAM 5/6'],
+        note: '(5484 − 68) µs = 5416 µs; 5416 / 3.6 µs = 1504 short-GI symbols; 1504 x 24960 bits / 8 = 4,692,480 octets.' },
+      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length', max: 'maxApepOctets' },
       dataField: {
-        N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['ns3-vht', 'plan'] },
-        N_tail: { value: 6, unit: 'bit per encoder', status: 'verified', evidence: ['ns3-vht', 'plan'] },
+        N_service: { value: 16, unit: 'bit', status: 'supported', evidence: ['ns3-vht', 'plan', 'vocal-11a'], note: 'Same SERVICE field as Clause 17; ns-3 uses 16 bits for every OFDM-based PHY.' },
+        N_tail: { value: 6, unit: 'bit per encoder', status: 'supported', evidence: ['ns3-vht', 'plan', 'mw-hdl-conv'] },
       },
       txtime: {
-        shortGiRounding: { value: true, status: 'unverified', evidence: ['mw-duration', 'plan'],
+        shortGiRounding: { value: true, status: 'supported', evidence: ['mw-duration', 'plan', 'review-3'],
           note: 'Same 4 µs alignment as HT-mixed expected for VHT (TXTIME eq. in 21.4.3 of 802.11-2016 per MathWorks); not confirmed.' },
-        legacySymbol: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'] },
+        legacySymbol: { value: 4, unit: 'µs', status: 'derived', evidence: ['ns3-vht', 'plan', 'arith'], derivedFrom: ['generations.nonHT.ofdm.T_DFT', 'generations.nonHT.ofdm.guardIntervals'] },
       },
       fields: [
         { name: 'L-STF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-LTF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-SIG', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'VHT-SIG-A', toneplan: 'legacy', symbols: 2,
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'], note: 'VHT-SIG-A1 + VHT-SIG-A2' },
-          modulation: { value: ['BPSK', 'QBPSK'], status: 'verified', evidence: ['pat-format-detect', 'plan'],
+          duration: { value: 8, unit: 'µs', status: 'supported', evidence: ['ns3-vht', 'plan', 'mw-ppdu-structure'], note: 'VHT-SIG-A1 + VHT-SIG-A2 (two 4 µs symbols, MathWorks)' },
+          modulation: { value: ['BPSK', 'QBPSK'], status: 'supported', evidence: ['pat-format-detect', 'plan', 'pat-vht-siga'],
             note: 'VHT-SIG-A1 looks like a Non-HT/HT receiver would expect (BPSK); VHT-SIG-A2 is rotated by 90° (QBPSK), which identifies a VHT PPDU.' } },
-        { name: 'VHT-STF', duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'] } },
-        { name: 'VHT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-vht', 'plan'] } },
+        { name: 'VHT-STF', duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-vht', 'plan', 'mw-ppdu-structure'] } },
+        { name: 'VHT-LTF', count: 'N_LTF', durationEach: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-vht', 'plan', 'mw-vhtltf'] } },
         { name: 'VHT-SIG-B',
-          duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['mw-vht-ppdu', 'ns3-vht', 'plan'],
+          duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['mw-vht-ppdu', 'ns3-vht', 'plan'],
             note: 'Present in VHT SU PPDUs too (MathWorks: 17-bit VHT-SIG-B Length at 20 MHz SU). ns-3 models it for MU only.' } },
         { name: 'Data', kind: 'data' },
       ],
@@ -364,39 +392,39 @@ var WIFI_STANDARDS = {
       bandwidths: [20, 40, 80, 160],
       spatialStreams: [1, 2, 3, 4],
       coding: 'LDPC',
-      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length' },
+      payloadField: { name: 'APEP_LENGTH', term: 'APEP_LENGTH', label: 'APEP length', max: null },
       ofdm: {
-        subcarrierSpacingKHz: { value: 78.125, unit: 'kHz', status: 'verified', evidence: ['ns3-he', 'arith', 'plan'], note: '1 / 12.8 µs = 20 MHz / 256' },
-        T_DFT: { value: 12.8, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'ns-3: symbol = 12800 ns + GI' },
-        guardIntervals: { value: [0.8, 1.6, 3.2], unit: 'µs', status: 'verified', evidence: ['ieee-16-1341', 'plan'] },
-        fftSize: { value: { 20: 256, 40: 512, 80: 1024, 160: 2048 }, status: 'verified', evidence: ['arith', 'plan'] },
+        subcarrierSpacingKHz: { value: 78.125, unit: 'kHz', status: 'supported', evidence: ['ns3-he', 'arith', 'plan', 'keysight-89601'], note: '1 / 12.8 µs = 20 MHz / 256' },
+        T_DFT: { value: 12.8, unit: 'µs', status: 'derived', evidence: ['ns3-he', 'plan', 'arith'], derivedFrom: ['generations.HE.ofdm.subcarrierSpacingKHz'], note: 'ns-3: symbol = 12800 ns + GI' },
+        guardIntervals: { value: [0.8, 1.6, 3.2], unit: 'µs', status: 'supported', evidence: ['ieee-16-1341', 'plan', 'silabs-gi-ltf', 'ns3-he'] },
+        fftSize: { value: { 20: 256, 40: 512, 80: 1024, 160: 2048 }, status: 'derived', evidence: ['arith', 'plan'], derivedFrom: ['generations.HE.ofdm.subcarrierSpacingKHz', 'definition: channel bandwidth'] },
       },
       toneplan: {
         20: {
-          occupied: { value: [[-122, -2], [2, 122]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-7 (802.11ax-2021, per ns-3)' },
+          occupied: { value: [[-122, -2], [2, 122]], status: 'unverified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-7 (802.11ax-2021, per ns-3)' },
           pilots: { value: [-116, -90, -48, -22, 22, 48, 90, 116], status: 'unverified', evidence: ['pat-he-pilots-242', 'plan'],
             note: 'Stated by one patent; marked unverified in review (not to be derived from the 80 MHz set).' },
-          N_SD: { value: 234, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
+          N_SD: { value: 234, status: 'supported', evidence: ['ns3-he', 'cts-ru', 'plan', 'ibwave-wifi6'] },
         },
         40: {
-          occupied: { value: [[-244, -3], [3, 244]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-8 (802.11ax-2021, per ns-3)' },
+          occupied: { value: [[-244, -3], [3, 244]], status: 'unverified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-8 (802.11ax-2021, per ns-3)' },
           pilots: { value: [-238, -212, -170, -144, -104, -78, -36, -10, 10, 36, 78, 104, 144, 170, 212, 238], status: 'unverified', evidence: ['plan'],
             note: 'Value from the pre-research plan only; no source found.' },
-          N_SD: { value: 468, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
+          N_SD: { value: 468, status: 'supported', evidence: ['ns3-he', 'cts-ru', 'plan', 'ibwave-wifi6'] },
         },
         80: {
-          occupied: { value: [[-500, -3], [3, 500]], status: 'verified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-9 (802.11ax-2021, per ns-3)' },
-          pilots: { value: [-468, -400, -334, -266, -226, -158, -92, -24, 24, 92, 158, 226, 266, 334, 400, 468], status: 'verified', evidence: ['ieee-16-0623', 'plan'],
+          occupied: { value: [[-500, -3], [3, 500]], status: 'unverified', evidence: ['ns3-heru', 'plan'], clause: 'Table 27-9 (802.11ax-2021, per ns-3)' },
+          pilots: { value: [-468, -400, -334, -266, -226, -158, -92, -24, 24, 92, 158, 226, 266, 334, 400, 468], status: 'unverified', evidence: ['ieee-16-0623', 'plan'],
             clause: 'Table 26-32 of TGax draft (per IEEE 11-16/0623r0, reviewer-cited)',
             note: 'Corrected in review. The ±18-based set found in patents is the 802.11be design.' },
-          N_SD: { value: 980, status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'] },
+          N_SD: { value: 980, status: 'supported', evidence: ['ns3-he', 'cts-ru', 'plan', 'ibwave-wifi6'] },
         },
         160: {
-          occupied: { value: [[-1012, -515], [-509, -12], [12, 509], [515, 1012]], status: 'verified', evidence: ['ns3-heru', 'plan'] },
+          occupied: { value: [[-1012, -515], [-509, -12], [12, 509], [515, 1012]], status: 'unverified', evidence: ['ns3-heru', 'plan'] },
           pilots: { value: [-980, -912, -846, -778, -738, -670, -604, -536, -488, -420, -354, -286, -246, -178, -112, -44,
                              44, 112, 178, 246, 286, 354, 420, 488, 536, 604, 670, 738, 778, 846, 912, 980],
-            status: 'verified', evidence: ['ieee-16-0623'], note: 'The 80 MHz set shifted by −512 and +512 (rule supplied in review).' },
-          N_SD: { value: 1960, status: 'verified', evidence: ['ns3-he', 'plan'] },
+            status: 'unverified', evidence: ['ieee-16-0623'], note: 'The 80 MHz set shifted by −512 and +512 (rule supplied in review).' },
+          N_SD: { value: 1960, status: 'supported', evidence: ['ns3-he', 'plan', 'ibwave-wifi6'] },
         },
       },
       maxMcs: 11,
@@ -405,7 +433,7 @@ var WIFI_STANDARDS = {
         tones: {
           value: { 26: { data: 24, pilot: 2 }, 52: { data: 48, pilot: 4 }, 106: { data: 102, pilot: 4 },
                    242: { data: 234, pilot: 8 }, 484: { data: 468, pilot: 16 }, 996: { data: 980, pilot: 16 } },
-          status: 'verified', evidence: ['ns3-he', 'cts-ru', 'plan'],
+          status: 'supported', evidence: ['ns3-he', 'cts-ru', 'plan'],
           note: 'ns-3 gives the data counts; pilot counts = RU size - data (and CTS 160 for 242/484/996).',
         },
         countPerBandwidth: {
@@ -413,37 +441,37 @@ var WIFI_STANDARDS = {
                    40: { 26: 18, 52: 8, 106: 4, 242: 2, 484: 1 },
                    80: { 26: 37, 52: 16, 106: 8, 242: 4, 484: 2, 996: 1 },
                    160: { 26: 74, 52: 32, 106: 16, 242: 8, 484: 4, 996: 2 } },
-          status: 'verified', evidence: ['ns3-heru', 'plan'],
+          status: 'unverified', evidence: ['ns3-heru', 'plan'],
         },
       },
       N_LTF: { value: { 1: 1, 2: 2, 3: 4, 4: 4 }, status: 'unverified', evidence: ['plan'],
         note: 'Assumed equal to the VHT mapping; ns-3 caps HE-LTFs at 8 but does not show the mapping.' },
       heLtf: {
-        symbolWithoutGi: { value: { '1x': 3.2, '2x': 6.4, '4x': 12.8 }, unit: 'µs', status: 'verified', evidence: ['ieee-16-1341', 'plan'] },
+        symbolWithoutGi: { value: { '1x': 3.2, '2x': 6.4, '4x': 12.8 }, unit: 'µs', status: 'derived', evidence: ['ieee-16-1341', 'plan', 'arith'], derivedFrom: ['generations.HE.ofdm.T_DFT', 'definition: an Nx HE-LTF symbol lasts N/4 of the data DFT period'] },
         /* HE-LTF type + GI pairs offered for an HE SU PPDU */
         allowedWithGi: {
           value: [{ ltf: '1x', gi: 0.8 }, { ltf: '2x', gi: 0.8 }, { ltf: '2x', gi: 1.6 }, { ltf: '4x', gi: 3.2 }],
-          status: 'verified', evidence: ['keysight-he-su', 'silabs-gi-ltf'],
+          status: 'supported', evidence: ['keysight-he-su', 'silabs-gi-ltf'],
           note: '4x HE-LTF + 0.8 µs GI also exists but only under extra conditions (DCM/STBC, or HE ER SU) — not offered here.',
         },
       },
       codingRule: {
         value: { bccMaxNss: 4, bccMaxMcs: 9, bccMaxRuTones: 242 },
-        status: 'verified', evidence: ['ieee-18-1460'],
+        status: 'supported', evidence: ['ieee-18-1460', 'ieee-draft-d02'],
         clause: 'P802.11ax D0.2 26.3.10.4 (draft numbering); the final 802.11ax-2021 clause number was not read',
         note: 'BCC may only be used for MCS 0-9, N_SS <= 4 and RU <= 242 tones; LDPC otherwise. This app uses LDPC ' +
           'for every HE configuration (stated simplification).',
       },
       dataField: {
-        N_service: { value: 16, unit: 'bit', status: 'verified', evidence: ['pat-padding', 'plan'] },
-        N_tail: { value: 0, unit: 'bit', status: 'verified', evidence: ['pat-padding', 'plan'], note: 'LDPC has no tail bits (N_tail = 6·N_ES only for BCC).' },
+        N_service: { value: 16, unit: 'bit', status: 'supported', evidence: ['pat-padding', 'plan', 'ns3-he'] },
+        N_tail: { value: 0, unit: 'bit', status: 'derived', evidence: ['pat-padding', 'plan', 'arith'], derivedFrom: ['definition: LDPC is a block code; tail bits only terminate a convolutional (BCC) code'], note: 'LDPC has no tail bits (N_tail = 6·N_ES only for BCC).' },
         N_DBPS_rounding: { value: 'floor', status: 'unverified', evidence: ['tgbe-ndbps'],
           note: 'N_DBPS = floor(N_CBPS · R). Stated on the TGbe (802.11be) reflector only. None of the 72 ns-3 HE TXTIME ' +
             'vectors distinguishes floor from exact (see tests). Payloads that would: HE 80 MHz MCS 9 APEP_LENGTH 2448, ' +
             'MCS 11 APEP_LENGTH 5102 (1 SS, GI 0.8 µs) — check one of these in another tool.' },
         N_SD_short: {
           value: { 26: 6, 52: 12, 106: 24, 242: 60, 484: 120, 996: 240, 1992: 492 },
-          status: 'verified', evidence: ['review-2', 'pat-nsd-short'],
+          status: 'supported', evidence: ['review-2', 'pat-nsd-short', 'review-3'],
           note: 'Looked up by RU size (1992 = 2 x 996-tone RU at 160 MHz); table supplied in review, consistent with the multi-RU patent.',
         },
       },
@@ -458,32 +486,32 @@ var WIFI_STANDARDS = {
             'N_PAD,Pre-FEC = (N_SYM,init − 1)·N_DBPS + N_DBPS,last,init − 8·APEP_LENGTH − N_tail − N_service',
             'if LDPC extra symbol segment: a_init = 4 → N_SYM = N_SYM,init + 1 and a = 1; else N_SYM = N_SYM,init and a = a_init + 1',
           ],
-          status: 'verified', evidence: ['pat-padding', 'plan'], note: 'Secondary: patents quoting draft text (m_STBC = 1 here).',
+          status: 'supported', evidence: ['pat-padding', 'plan', 'pat-padding-mu'], note: 'Secondary: patents quoting draft text (m_STBC = 1 here).',
         },
-        aRange: { value: [1, 2, 3, 4], status: 'verified', evidence: ['pat-pe', 'plan'], note: 'a = pre-FEC padding factor' },
+        aRange: { value: [1, 2, 3, 4], status: 'supported', evidence: ['pat-pe', 'plan', 'pat-pre-post-fec'], note: 'a = pre-FEC padding factor' },
       },
       packetExtension: {
-        nominalPacketPadding: { value: [0, 8, 16], unit: 'µs', status: 'verified', evidence: ['pat-pe', 'plan'] },
+        nominalPacketPadding: { value: [0, 8, 16], unit: 'µs', status: 'supported', evidence: ['pat-pe', 'plan', 'mw-hesuconfig'] },
         /* nominal T_PE indexed [a-1] for each nominal packet padding */
         T_PE: {
           value: { 0: [0, 0, 0, 0], 8: [0, 0, 4, 8], 16: [4, 8, 12, 16] },
-          unit: 'µs', status: 'verified', evidence: ['mw-hesuconfig', 'pat-pe', 'plan'],
+          unit: 'µs', status: 'supported', evidence: ['mw-hesuconfig', 'pat-pe', 'plan'],
           note: 'Index = a − 1. Values confirmed in review from MathWorks wlanHESUConfig; the 16 µs row also matches the patents.',
         },
       },
       txtime: {
         formula: { value: 'TXTIME = 20 µs + T_HE-PREAMBLE + N_SYM·T_SYM + T_PE + SignalExtension; T_HE-PREAMBLE = T_RL-SIG + T_HE-SIG-A + T_HE-STF + N_HE-LTF·T_HE-LTF,SYM',
-          status: 'verified', evidence: ['pat-he-txtime', 'ieee-16-1411', 'plan'] },
+          status: 'supported', evidence: ['pat-he-txtime', 'ieee-16-1411', 'plan'] },
       },
       fields: [
         { name: 'L-STF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-LTF', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'L-SIG', toneplan: 'legacy', ref: 'nonHT' },
         { name: 'RL-SIG', toneplan: 'legacy',
-          duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'repeated L-SIG (ns-3: L-SIG + RL-SIG = 8 µs)' } },
+          duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-he', 'plan', 'pat-he-durations'], note: 'repeated L-SIG (ns-3: L-SIG + RL-SIG = 8 µs)' } },
         { name: 'HE-SIG-A', toneplan: 'legacy', symbols: 2,
-          duration: { value: 8, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'HE SU; 16 µs in an HE ER SU PPDU' } },
-        { name: 'HE-STF', duration: { value: 4, unit: 'µs', status: 'verified', evidence: ['ns3-he', 'plan'], note: 'HE SU/MU; 8 µs in an HE TB PPDU' } },
+          duration: { value: 8, unit: 'µs', status: 'supported', evidence: ['ns3-he', 'plan', 'pat-he-durations'], note: 'HE SU; 16 µs in an HE ER SU PPDU' } },
+        { name: 'HE-STF', duration: { value: 4, unit: 'µs', status: 'supported', evidence: ['ns3-he', 'plan', 'pat-he-durations', 'keysight-he-structure'], note: 'HE SU/MU; 8 µs in an HE TB PPDU' } },
         { name: 'HE-LTF', count: 'N_LTF', durationEach: 'heLtf' },
         { name: 'Data', kind: 'data' },
         { name: 'PE', kind: 'pe', optional: true },
@@ -497,16 +525,20 @@ var WIFI_STANDARDS = {
    *  per 4 µs symbol), computes the true duration and defers for it.
    * ------------------------------------------------------------------------- */
   lsig: {
-    nonHtLength: { value: 'PSDU length in octets', status: 'verified', evidence: ['review-2', 'plan'] },
+    nonHtLength: { value: 'PSDU length in octets', status: 'unverified', evidence: ['review-2', 'plan', 'mw-lsig'], note: 'MathWorks + reviewer statement only (one public origin).' },
     spoofRule: {
       value: { legacyPreamble: 20, symbol: 4, octetsPerSymbol: 3, subtract: 3 },
-      status: 'unverified', evidence: ['review-2', 'ieee-13-1002'],
-      note: 'LENGTH = ceil((TXTIME − SignalExtension − 20) / 4) · 3 − 3 for HT, VHT and HE. Reviewer-supplied; consistent with ' +
-        'the 5484 µs maximum (LENGTH = 4095). Subtracting the 2.4 GHz signal extension, and an extra HE-specific offset, are not confirmed.',
+      status: 'supported', evidence: ['review-2', 'ieee-13-1002', 'pat-lsig-length', 'warp-ref', 'review-3'], note: 'LENGTH = ceil((TXTIME − SignalExtension − 20) / 4) · 3 − 3 for HT and VHT; HE subtracts a further m (lsig.heM). The patent writes 3 as RATE/8·4 with RATE = 6 Mb/s.',
     },
-    maxLength: { value: 4095, unit: 'octet', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'plan'] },
-    maxPpdu: { value: 5484, unit: 'µs', status: 'verified', evidence: ['ieee-13-1002', 'mw-duration', 'arith'],
-      note: '(4095 + 3) / 3 · 4 + 20 = 5484 µs: the longest duration an L-SIG LENGTH can announce (HT, VHT, HE PPDUs).' },
+    heM: {
+      value: { 'HE SU PPDU': 2, 'HE TB PPDU': 2, 'HE MU PPDU': 1, 'HE ER SU PPDU': 1 },
+      status: 'supported', evidence: ['ieee-17-0398', 'pat-he-mod3', 'pat-lsig-length'],
+      note: 'HE PPDUs subtract m: LENGTH mod 3 = 1 marks HE SU / HE TB, LENGTH mod 3 = 2 marks HE MU / HE ER SU (mod 3 = 0: not HE).',
+    },
+    maxLength: { value: 4095, unit: 'octet', status: 'derived', evidence: ['ieee-13-1002', 'mw-duration', 'plan', 'arith', 'review-3'], derivedFrom: ['generations.nonHT.lsigBits'], note: '2^12 − 1 (12-bit LENGTH)' },
+    maxPpdu: { value: 5484, unit: 'µs', status: 'derived', evidence: ['ieee-13-1002', 'mw-duration', 'arith', 'review-3'], derivedFrom: ['lsig.spoofRule', 'lsig.maxLength'],
+      note: '(4095 + 3) / 3 · 4 + 20 = 5484 µs: the longest duration an L-SIG LENGTH can announce. Checked for every generation ' +
+        '(excluding the signal extension); the longest Non-HT PPDU, 4095 octets at 6 Mb/s, takes exactly 5484 µs.' },
   },
 
   /* ---------------------------------------------------------------------------
@@ -528,7 +560,7 @@ var WIFI_STANDARDS = {
     },
     shorteningPuncturing: {
       value: ['N_shrt = max(0, N_CW·L_LDPC·R − N_pld)', 'N_punc = max(0, N_CW·L_LDPC − N_avbits − N_shrt)'],
-      status: 'verified', evidence: ['arxiv-ldpc', 'plan'],
+      status: 'supported', evidence: ['arxiv-ldpc', 'plan', 'pat-ldpc-extra'],
     },
     extraSymbolCondition: {
       value: { puncturedFraction: 0.1, shorteningFactor: 1.2 },
@@ -543,16 +575,16 @@ var WIFI_STANDARDS = {
    * ------------------------------------------------------------------------- */
   interframe: {
     bands: {
-      '5':   { SIFS: { value: 16, unit: 'µs', status: 'verified', evidence: ['wiki-sifs', 'wiki-difs', 'plan'] },
-               aSlotTime: { value: { short: 9 }, unit: 'µs', status: 'verified', evidence: ['wiki-difs', 'plan'] } },
-      '2.4': { SIFS: { value: 10, unit: 'µs', status: 'verified', evidence: ['wiki-sifs', 'wiki-difs', 'plan'] },
-               aSlotTime: { value: { short: 9, long: 20 }, unit: 'µs', status: 'verified', evidence: ['wiki-difs', 'plan'] } },
-      '6':   { SIFS: { value: 16, unit: 'µs', status: 'unverified', evidence: ['plan'], note: 'assumed same as 5 GHz' },
-               aSlotTime: { value: { short: 9 }, unit: 'µs', status: 'unverified', evidence: ['plan'] } },
+      '5':   { SIFS: { value: 16, unit: 'µs', status: 'unverified', evidence: ['wiki-sifs', 'wiki-difs', 'plan'] },
+               aSlotTime: { value: { short: 9 }, unit: 'µs', status: 'unverified', evidence: ['wiki-difs', 'plan'] } },
+      '2.4': { SIFS: { value: 10, unit: 'µs', status: 'unverified', evidence: ['plan'] },
+               aSlotTime: { value: { short: 9, long: 20 }, unit: 'µs', status: 'unverified', evidence: ['plan'] } },
+      '6':   { SIFS: { value: 16, unit: 'µs', status: 'unverified', evidence: ['wiki-sifs', 'wiki-difs', 'plan'], note: 'assumed same as 5 GHz' },
+               aSlotTime: { value: { short: 9 }, unit: 'µs', status: 'unverified', evidence: ['wiki-difs', 'plan'] } },
     },
-    difsRule: { value: 'DIFS = SIFS + 2 × aSlotTime', status: 'verified', evidence: ['wiki-difs', 'plan'] },
+    difsRule: { value: 'DIFS = SIFS + 2 × aSlotTime', status: 'unverified', evidence: ['wiki-difs', 'plan'] },
     signalExtension: {
-      value: { '2.4': 6, '5': 0, '6': 0 }, unit: 'µs', status: 'verified', evidence: ['ns3-ofdm', 'ns3-txdur', 'plan'],
+      value: { '2.4': 6, '5': 0, '6': 0 }, unit: 'µs', status: 'supported', evidence: ['ns3-ofdm', 'ns3-txdur', 'plan', 'pat-lsig-length'],
       note: 'OFDM PPDUs in the 2.4 GHz band end with a 6 µs signal extension (no transmission) so that the receiver has time to finish decoding before SIFS.',
     },
     ackFrameOctets: { value: 14, unit: 'octet', status: 'unverified', evidence: ['plan'] },
@@ -678,24 +710,24 @@ var WIFI_STANDARDS = {
    *  with ±0.1 Mbps (published HE tables differ in rounding, e.g. 600.4 vs 600.5).
    * ------------------------------------------------------------------------- */
   checkTable: {
-    status: 'verified',
+    // each row's `status` describes the published reference value (its sources), not the calculator
     rows: [
-      { gen: 'nonHT', bw: 20, gi: 0.8, nss: 1, mod: 'BPSK',   R: '1/2', expectMbps: 6,     expectNDBPS: 24,  tol: 0.001, evidence: ['ns3-ofdm', 'plan'] },
-      { gen: 'nonHT', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', expectMbps: 54,    expectNDBPS: 216, tol: 0.001, evidence: ['ns3-ofdm', 'plan'] },
-      { gen: 'HT',  bw: 20, gi: 0.8, nss: 1, mcs: 0, expectMbps: 6.5,   tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HT',  bw: 20, gi: 0.8, nss: 1, mcs: 7, expectMbps: 65,    tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HT',  bw: 20, gi: 0.4, nss: 1, mcs: 7, expectMbps: 72.2,  tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HT',  bw: 40, gi: 0.4, nss: 1, mcs: 7, expectMbps: 150,   tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HT',  bw: 40, gi: 0.4, nss: 2, mcs: 7, expectMbps: 300,   tol: 0.05, evidence: ['rs-rates', 'plan'], note: 'HT MCS 15' },
-      { gen: 'VHT', bw: 20, gi: 0.8, nss: 1, mcs: 8, expectMbps: 78,    tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'VHT', bw: 80, gi: 0.4, nss: 1, mcs: 9, expectMbps: 433.3, tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'VHT', bw: 160, gi: 0.4, nss: 1, mcs: 9, expectMbps: 866.7, tol: 0.05, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HE',  bw: 20, gi: 3.2, nss: 1, mcs: 0,  expectMbps: 7.3,    tol: 0.1, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HE',  bw: 20, gi: 0.8, nss: 1, mcs: 0,  expectMbps: 8.6,    tol: 0.1, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HE',  bw: 20, gi: 0.8, nss: 1, mcs: 11, expectMbps: 143.4,  tol: 0.1, evidence: ['rs-rates', 'plan'] },
-      { gen: 'HE',  bw: 80, gi: 0.8, nss: 1, mcs: 9,  expectMbps: 480.4,  tol: 0.1, evidence: ['rs-rates', 'plan'], note: 'fractional N_DBPS (6533.3)' },
-      { gen: 'HE',  bw: 80, gi: 0.8, nss: 1, mcs: 11, expectMbps: 600.4,  tol: 0.1, evidence: ['rs-rates', 'plan'], note: 'fractional N_DBPS (8166.7); R&S lists 600.5' },
-      { gen: 'HE',  bw: 160, gi: 0.8, nss: 2, mcs: 11, expectMbps: 2401.9, tol: 0.1, evidence: ['rs-rates', 'plan'], note: 'R&S lists 2402.0' },
+      { gen: 'nonHT', bw: 20, gi: 0.8, nss: 1, mod: 'BPSK',   R: '1/2', expectMbps: 6,     expectNDBPS: 24,  tol: 0.001, evidence: ['ns3-ofdm', 'vocal-11a', 'plan'], status: 'supported' },
+      { gen: 'nonHT', bw: 20, gi: 0.8, nss: 1, mod: '64-QAM', R: '3/4', expectMbps: 54,    expectNDBPS: 216, tol: 0.001, evidence: ['ns3-ofdm', 'vocal-11a', 'plan'], status: 'supported' },
+      { gen: 'HT',  bw: 20, gi: 0.8, nss: 1, mcs: 0, expectMbps: 6.5,   tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HT',  bw: 20, gi: 0.8, nss: 1, mcs: 7, expectMbps: 65,    tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HT',  bw: 20, gi: 0.4, nss: 1, mcs: 7, expectMbps: 72.2,  tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HT',  bw: 40, gi: 0.4, nss: 1, mcs: 7, expectMbps: 150,   tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HT',  bw: 40, gi: 0.4, nss: 2, mcs: 7, expectMbps: 300,   tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified', note: 'HT MCS 15' },
+      { gen: 'VHT', bw: 20, gi: 0.8, nss: 1, mcs: 8, expectMbps: 78,    tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'VHT', bw: 80, gi: 0.4, nss: 1, mcs: 9, expectMbps: 433.3, tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'VHT', bw: 160, gi: 0.4, nss: 1, mcs: 9, expectMbps: 866.7, tol: 0.05, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HE',  bw: 20, gi: 3.2, nss: 1, mcs: 0,  expectMbps: 7.3,    tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HE',  bw: 20, gi: 0.8, nss: 1, mcs: 0,  expectMbps: 8.6,    tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HE',  bw: 20, gi: 0.8, nss: 1, mcs: 11, expectMbps: 143.4,  tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified' },
+      { gen: 'HE',  bw: 80, gi: 0.8, nss: 1, mcs: 9,  expectMbps: 480.4,  tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified', note: 'fractional N_DBPS (6533.3)' },
+      { gen: 'HE',  bw: 80, gi: 0.8, nss: 1, mcs: 11, expectMbps: 600.4,  tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified', note: 'fractional N_DBPS (8166.7); R&S lists 600.5' },
+      { gen: 'HE',  bw: 160, gi: 0.8, nss: 2, mcs: 11, expectMbps: 2401.9, tol: 0.1, evidence: ['rs-rates', 'plan'], status: 'unverified', note: 'R&S lists 2402.0' },
     ],
   },
 };

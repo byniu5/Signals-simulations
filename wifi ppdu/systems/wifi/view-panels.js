@@ -30,18 +30,20 @@
       sy.N_PAD !== undefined ? row(term('N_PAD'), sy.N_PAD + ' bits') : null,
       row(term('TXTIME'), V.us(a.timeline.txtime_ns) + ' µs', 'airtime of the whole PPDU'),
       row(h('span', null, 'L-SIG ', term('LENGTH')), a.lsig.LENGTH,
-        a.lsig.rule === 'psdu' ? 'PSDU length' : `ceil((${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} − 20)/4)·3 − 3`),
+        a.lsig.rule === 'psdu' ? 'PSDU length'
+          : `ceil((${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} − 20)/4)·3 − 3` + (a.lsig.m ? ` − m (m = ${a.lsig.m})` : '')),
     ];
     const u = a.unverified;
-    const notice = u.airtime.length
+    const notice = u.airtime.length || u.lsig.length
       ? h('div', { class: 'notice warn' },
         u.ldpcDependent ? h('strong', null, 'Airtime depends on unverified LDPC constants. ') : null,
         u.rate.length ? h('div', null, 'Data rate depends on unverified data: ', u.rate.join(', ')) : null,
-        h('div', null, 'TXTIME / N_SYM depend on unverified data: ', u.airtime.join(', ')))
-      : h('div', { class: 'notice ok' }, 'Every value used for these numbers is marked verified in the data file.');
+        u.airtime.length ? h('div', null, 'TXTIME / N_SYM depend on unverified data: ', u.airtime.join(', ')) : null,
+        u.lsig.length ? h('div', null, 'L-SIG LENGTH depends on unverified data: ', u.lsig.join(', ')) : null)
+      : h('div', { class: 'notice ok' }, 'No unverified data is used for these numbers (every input is supported or derived).');
     const problems = [];
     if (a.excluded) problems.push(`This MCS / bandwidth / N_SS combination is not defined in the VHT-MCS tables (${a.excluded.status}: ${a.excluded.note}).`);
-    if (a.maxPpdu.exceeded) problems.push(`TXTIME exceeds the maximum PPDU duration of ${V.us(a.maxPpdu.limit_ns)} µs that an L-SIG LENGTH can announce — this PPDU cannot be sent; reduce the payload or raise the MCS.`);
+    if (a.maxPpdu.exceeded) problems.push(`TXTIME${a.timeline.signalExtension_ns ? ' (without the signal extension)' : ''} is ${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} µs, more than the maximum PPDU duration of ${V.us(a.maxPpdu.limit_ns)} µs that an L-SIG LENGTH can announce — this PPDU cannot be sent; reduce the payload or raise the MCS.`);
     else if (!a.lsig.valid) problems.push(`L-SIG LENGTH ${a.lsig.LENGTH} exceeds ${a.lsig.maxLength}.`);
     return h('div', null, h('h2', null, 'Output'),
       h('div', { class: 'small muted' }, a.mcsIndex === null
@@ -57,15 +59,16 @@
     const passed = results.filter((r) => r.pass).length;
     return h('div', { class: 'checks' },
       h('h2', null, `Check table — ${passed}/${results.length} pass`),
-      h('p', { class: 'small muted' }, 'Published data rates against the calculators. HE rows compare with the exact N_SD·N_BPSCS·R·N_SS/T_SYM (±0.1 Mb/s); published HE tables differ in rounding.'),
+      h('p', { class: 'small muted' }, 'Published data rates against the calculators. HE rows compare with the exact N_SD·N_BPSCS·R·N_SS/T_SYM (±0.1 Mb/s); published HE tables differ in rounding. "Reference" is the status of the published value itself.'),
       h('div', { style: { overflowX: 'auto' } }, h('table', null,
-        h('thead', null, h('tr', null, ['PHY', 'BW', 'GI', 'N_SS', 'MCS / rate', 'published', 'computed', 'exact', ''].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, ['PHY', 'BW', 'GI', 'N_SS', 'MCS / rate', 'published', 'reference', 'computed', 'exact', ''].map((x) => h('th', null, x)))),
         h('tbody', null, results.map((r) => {
           const g = D.generations[r.row.gen];
           return h('tr', null,
             h('td', null, g.label), h('td', { class: 'num' }, r.row.bw), h('td', { class: 'num' }, r.row.gi), h('td', { class: 'num' }, r.row.nss),
             h('td', null, r.row.mcs !== undefined ? `MCS ${r.row.gen === 'HT' ? 8 * (r.row.nss - 1) + r.row.mcs : r.row.mcs}` : `${r.row.mod} ${r.row.R}`),
             h('td', { class: 'num' }, fmt(r.row.expectMbps, 1)),
+            h('td', { title: r.row.evidence.map((id) => D.sources[id].title).join('\n') }, h('span', { class: 'badge ' + r.row.status }, r.row.status)),
             h('td', { class: 'num' }, fmt(r.rateMbps, 3)),
             h('td', { class: 'num' }, fmt(r.exactRateMbps, 3)),
             h('td', { class: r.pass ? 'pass' : 'fail' }, r.pass ? 'pass' : 'FAIL'));
@@ -100,7 +103,9 @@
     }
     if (name === 'L-SIG') {
       extra.push(h('div', null, term('LENGTH'), ` = ${a.lsig.LENGTH}`, a.lsig.rule === 'psdu' ? ' (the PSDU length)'
-        : ` = ceil((TXTIME − 20 µs)/4 µs)·3 − 3 — a legacy receiver reading this at 6 Mb/s defers for the whole PPDU`, ' ', statusOf(a.lsig.rule === 'psdu' ? D.lsig.nonHtLength : D.lsig.spoofRule)));
+        : ` = ceil((TXTIME − 20 µs)/4 µs)·3 − 3${a.lsig.m ? ' − m' : ''} — a legacy receiver reading this at 6 Mb/s defers for the whole PPDU`, ' ',
+        statusOf(a.lsig.rule === 'psdu' ? D.lsig.nonHtLength : D.lsig.spoofRule),
+        a.lsig.m ? h('div', { class: 'small muted' }, `m = ${a.lsig.m} for an ${g.ppduFormat}: LENGTH mod 3 = ${a.lsig.LENGTH % 3}, which tells an HE receiver the PPDU format before HE-SIG-A. `, statusOf(D.lsig.heM)) : null));
     }
     if (it.toneplan) {
       const n20 = a.cfg.bw / 20;

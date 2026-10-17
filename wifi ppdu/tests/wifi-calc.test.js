@@ -23,25 +23,87 @@ test('standards-data.js contains no functions (pure data)', () => {
   walk(D, 'WIFI_STANDARDS');
 });
 
-test('every value entry has a status and evidence that resolves to a known source', () => {
-  let entries = 0;
-  const walk = (o, where) => {
+/* Four statuses; only 'unverified' is a warning in the UI. */
+const STATUSES = ['standard-checked', 'supported', 'derived', 'unverified'];
+const NOT_A_SOURCE = new Set(['cross-check', 'reviewer']); // origins that never count as independent sources
+
+/** Every status-bearing entry: value entries, VHT exclusions and check-table rows. */
+function statusEntries() {
+  const out = [];
+  (function walk(o, where) {
     if (!o || typeof o !== 'object') return;
-    if (!Array.isArray(o) && 'value' in o) {
-      entries++;
-      assert.ok(['verified', 'unverified'].includes(o.status), `${where}: status "${o.status}"`);
-      assert.ok(Array.isArray(o.evidence) && o.evidence.length > 0, `${where}: no evidence`);
-      for (const id of o.evidence) assert.ok(D.sources[id], `${where}: unknown source "${id}"`);
-    }
-    for (const [k, v] of Object.entries(o)) walk(v, where + '.' + k);
-  };
-  walk(D, 'D');
-  for (const row of D.checkTable.rows) for (const id of row.evidence) assert.ok(D.sources[id], 'check row source ' + id);
-  for (const g of Object.values(D.generations)) for (const x of g.exclusions || []) {
-    assert.ok(['verified', 'unverified'].includes(x.status));
-    for (const id of x.evidence) assert.ok(D.sources[id]);
+    if (!Array.isArray(o) && 'value' in o) out.push({ where, e: o });
+    for (const [k, v] of Object.entries(o)) walk(v, where + (Array.isArray(o) ? `[${v && v.name ? v.name : k}]` : '.' + k));
+  })(D, 'D');
+  for (const [gen, g] of Object.entries(D.generations)) (g.exclusions || []).forEach((x, i) => out.push({ where: `${gen}.exclusions[${i}]`, e: x }));
+  D.checkTable.rows.forEach((r, i) => out.push({ where: `checkTable.rows[${i}]`, e: r }));
+  return out;
+}
+
+/** Resolve a derivedFrom path such as 'generations.VHT.fields[VHT-SIG-B].duration' to its entry. */
+function resolve(pathText) {
+  let o = D;
+  for (const part of pathText.split('.')) {
+    const m = part.match(/^([^[]+)\[(.+)\]$/);
+    o = m ? o[m[1]].find((x) => x.name === m[2]) : o[part];
+    if (o === undefined) return undefined;
   }
-  assert.ok(entries > 50, 'expected many value entries, found ' + entries);
+  return o;
+}
+
+test('every status-bearing entry has one of the four statuses and evidence from known sources', () => {
+  const all = statusEntries();
+  for (const { where, e } of all) {
+    assert.ok(STATUSES.includes(e.status), `${where}: status "${e.status}"`);
+    assert.ok(Array.isArray(e.evidence) && e.evidence.length > 0, `${where}: no evidence`);
+    for (const id of e.evidence) assert.ok(D.sources[id], `${where}: unknown source "${id}"`);
+  }
+  for (const s of Object.values(D.sources)) assert.ok(typeof s.origin === 'string' && s.origin.length, 'source without origin: ' + s.title);
+  assert.ok(all.length > 100, 'expected many entries, found ' + all.length);
+});
+
+test('"supported" = at least 2 independent public origins (or classified so by the reviewer)', () => {
+  for (const { where, e } of statusEntries()) {
+    if (e.status !== 'supported') continue;
+    const origins = new Set(e.evidence.map((id) => D.sources[id].origin).filter((o) => !NOT_A_SOURCE.has(o)));
+    assert.ok(origins.size >= 2 || e.evidence.includes('review-3'), `${where}: supported by ${[...origins].join(', ') || 'no public source'}`);
+  }
+});
+
+test('"derived" = arithmetic whose inputs exist and are not unverified', () => {
+  let n = 0;
+  for (const { where, e } of statusEntries()) {
+    if (e.status !== 'derived') continue;
+    n++;
+    assert.ok(e.evidence.includes('arith'), `${where}: derived without 'arith'`);
+    assert.ok(Array.isArray(e.derivedFrom) && e.derivedFrom.length > 0, `${where}: no derivedFrom`);
+    for (const input of e.derivedFrom) {
+      if (input.startsWith('definition: ')) continue;
+      const x = resolve(input);
+      assert.ok(x && STATUSES.includes(x.status), `${where}: input ${input} not found`);
+      assert.notEqual(x.status, 'unverified', `${where}: input ${input} is unverified`);
+    }
+  }
+  assert.ok(n > 10);
+});
+
+test('"standard-checked" only with a source of kind "standard" (none yet: the IEEE text could not be read)', () => {
+  for (const { where, e } of statusEntries()) {
+    if (e.status === 'standard-checked') assert.ok(e.evidence.some((id) => D.sources[id].kind === 'standard'), where);
+  }
+});
+
+test('the reviewer\'s third-pass classification is applied', () => {
+  const st = (p) => resolve(p).status;
+  for (const p of ['generations.nonHT.lsigBits', 'lsig.spoofRule', 'generations.VHT.txtime.shortGiRounding', 'generations.VHT.encoders',
+    'generations.HE.dataField.N_SD_short', 'generations.HT.maxPsduOctets', 'generations.VHT.maxApepOctets']) assert.equal(st(p), 'supported', p);
+  for (const x of D.generations.VHT.exclusions) assert.equal(x.status, 'supported');
+  for (const p of ['lsig.maxLength', 'generations.nonHT.maxPsduOctets', 'lsig.maxPpdu', 'generations.HT.encoders', 'generations.VHT.maxPsduOctets'])
+    assert.equal(st(p), 'derived', p);
+  assert.equal(D.lsig.maxLength.value, 2 ** 12 - 1);
+  const v = D.generations.VHT.maxPsduOctets.value;
+  assert.equal(Math.floor((D.lsig.maxPpdu.value - 68) / 3.6), 1504);
+  assert.equal(v, 1504 * 24960 / 8, 'VHT max PSDU = 1504 symbols x 24960 bits / 8');
 });
 
 test('clause numbers are flagged as not read', () => {
@@ -131,7 +193,7 @@ test('VHT exclusions for N_SS 1-4 are exactly 20 MHz MCS 9 (N_SS 1,2,4), 80 MHz 
     const x = C.exclusion({ gen: 'VHT', bw, mcs, nss });
     if (x) {
       listed.push(`${bw}/${mcs}/${nss}`);
-      assert.equal(x.status, 'unverified');
+      assert.equal(x.status, 'supported');
       assert.match(x.note, /11-11\/0577r0.*N_ES rule.*standard table not read/);
     }
   }
@@ -154,7 +216,7 @@ test('N_ES: VHT = ceil(N_DBPS / 2160) with overrides; HT = 2 when N_DBPS > 1080'
   }
 });
 
-test('VHT exclusions coincide with BCC encoder-parser integrality (cross-check of the unverified entries)', () => {
+test('VHT exclusions coincide with BCC encoder-parser integrality (independent cross-check of the listed entries)', () => {
   // A combination cannot be built if N_DBPS or N_CBPS is not divisible by N_ES (each encoder gets equal bits).
   const derived = [];
   for (const bw of [20, 40, 80, 160]) for (const nss of [1, 2, 3, 4]) for (let mcs = 0; mcs <= 9; mcs++) {
@@ -300,8 +362,12 @@ test('airtime of every HE configuration is labelled as depending on the unverifi
   assert.equal(a.unverified.ldpcDependent, true);
   assert.ok(a.unverified.airtime.includes('ldpc.codewordTable') && a.unverified.airtime.includes('ldpc.extraSymbolCondition'));
   const b = C.analyze({ gen: 'nonHT', band: '5', mod: '64-QAM', R: '3/4', payload: 1500 });
-  assert.deepEqual(b.unverified, { rate: [], airtime: [], ldpcDependent: false });
-  const h = C.analyze({ gen: 'HT', bw: 40, gi: 0.8, nss: 3, mcs: 5, payload: 1500 });
+  assert.deepEqual(b.unverified, { rate: [], airtime: [], lsig: ['lsig.nonHtLength'], ldpcDependent: false });
+  assert.deepEqual(C.analyze({ gen: 'VHT', bw: 80, mcs: 9, payload: 1500 }).unverified, { rate: [], airtime: [], lsig: [], ldpcDependent: false });
+  // HT N_ES is 'derived' now; mark it unverified in a copy of the data to test where the dependency is reported
+  const D2 = structuredClone(D);
+  D2.generations.HT.encoders.status = 'unverified';
+  const h = require(path.join(__dirname, '../systems/wifi/calc.js')).create(D2).analyze({ gen: 'HT', bw: 40, gi: 0.8, nss: 3, mcs: 5, payload: 1500 });
   assert.ok(!h.unverified.rate.includes('generations.HT.encoders') && h.unverified.airtime.includes('generations.HT.encoders'),
     'N_ES affects N_SYM, not the rate');
 });
@@ -361,6 +427,16 @@ test('normalize() keeps configurations inside what each generation allows', () =
   assert.equal(C.displayMcs(C.normalize({ gen: 'HT', mcs: 7, nss: 2 }).cfg), 15);
 });
 
+test('payload is clamped by the length field of each generation (VHT: APEP_LENGTH, not the derived PSDU maximum)', () => {
+  const clamp = (gen, payload) => C.normalize({ gen, payload }).cfg.payload;
+  assert.equal(clamp('nonHT', 5000), 4095);
+  assert.equal(clamp('HT', 70000), 65535);
+  assert.equal(clamp('VHT', 2000000), D.generations.VHT.maxApepOctets.value);
+  assert.equal(clamp('VHT', 2000000), 1048575);
+  assert.equal(clamp('HE', 2000000), 2000000, 'HE: no length-field limit here; the 5484 µs cap flags it');
+  assert.equal(C.analyze({ gen: 'HE', bw: 20, mcs: 0, payload: 2000000 }).maxPpdu.exceeded, true);
+});
+
 /* ------------------------------------------------------------------------- *
  *  L-SIG LENGTH and the maximum PPDU duration
  * ------------------------------------------------------------------------- */
@@ -372,11 +448,23 @@ test('L-SIG LENGTH: PSDU length in Non-HT; ceil((TXTIME − 20)/4)·3 − 3 in H
   assert.equal(h.lsig.LENGTH, ((228 - 20) / 4) * 3 - 3); // 153
   const h24 = C.analyze({ gen: 'HT', band: '2.4', bw: 20, gi: 0.8, nss: 1, mcs: 7, payload: 1536 });
   assert.equal(h24.lsig.LENGTH, 153, 'signal extension excluded');
-  // a legacy receiver turns LENGTH back into a duration that covers the PPDU
-  for (const cfg of [{ gen: 'VHT', bw: 80, gi: 0.4, mcs: 9, payload: 3000 }, { gen: 'HE', bw: 40, gi: 1.6, ltf: '2x', mcs: 5, payload: 777 }]) {
+  // a legacy receiver turns LENGTH back into a duration that covers the PPDU: 20 + ceil((LENGTH + 3)/3)·4
+  for (const cfg of [{ gen: 'VHT', bw: 80, gi: 0.4, mcs: 9, payload: 3000 }, { gen: 'HE', bw: 40, gi: 1.6, ltf: '2x', mcs: 5, payload: 777 },
+    { gen: 'HE', band: '2.4', bw: 20, gi: 0.8, ltf: '1x', mcs: 3, payload: 99 }]) {
     const a = C.analyze(cfg);
-    const legacyUs = 20 + ((a.lsig.LENGTH + 3) / 3) * 4;
-    assert.ok(legacyUs >= us(a.timeline.txtime_ns) && legacyUs - us(a.timeline.txtime_ns) < 4, JSON.stringify(cfg));
+    const legacyUs = 20 + Math.ceil((a.lsig.LENGTH + 3) / 3) * 4;
+    const t = us(a.timeline.txtime_ns - a.timeline.signalExtension_ns);
+    assert.ok(legacyUs >= t && legacyUs - t < 4, JSON.stringify(cfg));
+  }
+});
+
+test('HE SU: L-SIG LENGTH subtracts m = 2, so LENGTH mod 3 = 1 (HT / VHT: mod 3 = 0)', () => {
+  for (let L = 1; L < 400; L += 37) {
+    const he = C.analyze({ gen: 'HE', bw: 20, gi: 0.8, ltf: '2x', mcs: 4, payload: L });
+    assert.equal(he.lsig.m, D.lsig.heM.value['HE SU PPDU']);
+    assert.equal(he.lsig.LENGTH % 3, 1, 'HE SU, APEP ' + L);
+    assert.equal(C.analyze({ gen: 'VHT', bw: 20, mcs: 4, payload: L }).lsig.LENGTH % 3, 0);
+    assert.equal(C.analyze({ gen: 'HT', bw: 20, mcs: 4, payload: L }).lsig.LENGTH % 3, 0);
   }
 });
 
@@ -388,6 +476,47 @@ test('maximum PPDU duration: 5484 µs corresponds to L-SIG LENGTH 4095', () => {
   assert.equal(long.lsig.valid, false);
   const ok = C.analyze({ gen: 'VHT', bw: 80, gi: 0.8, mcs: 9, payload: 4000 });
   assert.equal(ok.maxPpdu.exceeded, false);
+  // cross-check of the derived 5484 µs: the longest Non-HT PPDU (4095 octets at 6 Mb/s) is exactly that long
+  const nonHtMax = C.analyze({ gen: 'nonHT', band: '5', mod: 'BPSK', R: '1/2', payload: 4095 });
+  assert.equal(us(nonHtMax.timeline.txtime_ns), max);
+  assert.equal(nonHtMax.maxPpdu.exceeded, false);
+});
+
+test('TXTIME > 5484 µs is flagged for every generation, exactly at the boundary, and agrees with L-SIG LENGTH <= 4095', () => {
+  const limit = D.lsig.maxPpdu.value;
+  const flagged = (a) => a.maxPpdu.exceeded;
+  const t = (a) => us(a.timeline.txtime_ns - a.timeline.signalExtension_ns);
+  const cases = [
+    { gen: 'nonHT', band: '2.4', mod: 'BPSK', R: '1/2' },
+    { gen: 'HT', band: '5', bw: 20, gi: 0.8, nss: 1, mcs: 0 }, { gen: 'HT', band: '2.4', bw: 20, gi: 0.4, nss: 1, mcs: 1 },
+    { gen: 'VHT', bw: 20, gi: 0.8, nss: 1, mcs: 0 }, { gen: 'VHT', bw: 40, gi: 0.4, nss: 2, mcs: 3 },
+    { gen: 'HE', band: '5', bw: 20, gi: 0.8, ltf: '2x', nss: 1, mcs: 0 }, { gen: 'HE', band: '2.4', bw: 20, gi: 3.2, ltf: '4x', nss: 1, mcs: 2 },
+    { gen: 'HE', band: '6', bw: 40, gi: 1.6, ltf: '2x', nss: 2, mcs: 1, nominalPadding: 8 },
+  ];
+  let boundaries = 0;
+  for (const base of cases) {
+    const at = (L) => C.analyze(Object.assign({ payload: L }, base));
+    const maxL = C.options(base).maxPayload ?? 1e7;
+    // largest payload that still fits (binary search on the monotonic TXTIME)
+    let lo = 1, hi = maxL;
+    if (!flagged(at(hi))) lo = hi;
+    else while (hi - lo > 1) { const mid = Math.floor((lo + hi) / 2); if (flagged(at(mid))) hi = mid; else lo = mid; }
+    const fits = at(lo);
+    assert.equal(flagged(fits), false);
+    assert.ok(t(fits) <= limit, JSON.stringify(base));
+    if (lo < maxL) {
+      boundaries++;
+      const over = at(lo + 1);
+      assert.ok(flagged(over) && t(over) > limit, JSON.stringify(base));
+    }
+    // around the boundary the flag is exactly "TXTIME − SignalExtension > 5484" and the same as LENGTH > 4095
+    for (let L = Math.max(1, lo - 400); L <= Math.min(maxL, lo + 400); L += 7) {
+      const a = at(L);
+      assert.equal(flagged(a), t(a) > limit, JSON.stringify(base) + ' ' + L);
+      if (base.gen !== 'nonHT') assert.equal(flagged(a), !a.lsig.valid, JSON.stringify(base) + ' ' + L);
+    }
+  }
+  assert.ok(boundaries >= cases.length - 1, 'every case except Non-HT (capped by the 12-bit LENGTH) has a boundary');
 });
 
 test('N_SD,short is looked up from the table by RU size, never derived', () => {

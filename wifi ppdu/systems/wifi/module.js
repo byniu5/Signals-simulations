@@ -111,7 +111,7 @@
       const cfg = state.cfg, g = C.generation(cfg.gen), o = C.options(cfg);
       const mods = [...new Set(o.mcs.map((m) => m.mod))];
       const rates = o.mcs.filter((m) => m.mod === cfg.mod);
-      const maxLen = g.maxPsduOctets.value;
+      const maxLen = o.maxPayload; // null: no length-field limit (HE); the 5484 µs PPDU cap still applies
       const pf = g.payloadField;
       const rateLabel = (m) => {
         if (m.rateLabel) return `${m.R} (${m.rateLabel})`;
@@ -131,9 +131,9 @@
           disabled: m.mcs !== null && !!C.exclusion(Object.assign({}, cfg, { mcs: m.mcs })) })), (v) => setCfg({ R: v, mcs: null })),
         select(term('N_SS', 'Spatial streams'), cfg.nss, o.spatialStreams.map((n) => ({ value: n, label: n })), (v) => setCfg({ nss: Number(v) })),
         h('label', { class: 'ctl' }, h('span', null, pf.label, ' (', term(pf.term, pf.name), ', octets)'),
-          h('input', { type: 'number', min: 1, max: maxLen, value: cfg.payload,
-            onchange: (e) => setCfg({ payload: Math.min(maxLen, Math.max(1, Number(e.target.value) || 1)) }) }),
-          h('div', { class: 'hint' }, `1 … ${maxLen} octets`)),
+          h('input', { type: 'number', min: 1, max: maxLen === null ? undefined : maxLen, value: cfg.payload,
+            onchange: (e) => setCfg({ payload: Number(e.target.value) || 1 }) }),
+          h('div', { class: 'hint' }, maxLen === null ? 'limited by the 5484 µs maximum PPDU duration' : `1 … ${maxLen} octets`)),
         adjustNote ? h('div', { class: 'notice warn' }, adjustNote) : null,
         h('div', { class: 'hint' }, term(g.ppduFormat, g.ppduFormat), ' · ', D.documents[g.bands[cfg.band].doc || g.doc].doc, ', Clause ', D.documents[g.bands[cfg.band].doc || g.doc].clause),
       ].filter(Boolean)); // replaceChildren would print "null" for empty slots

@@ -368,18 +368,22 @@
     /**
      * L-SIG LENGTH. Non-HT: the PSDU length. HT / VHT / HE: chosen so that a legacy
      * receiver, assuming 3 octets per 4 µs symbol (6 Mb/s), computes the real duration:
-     *   LENGTH = ceil((TXTIME − SignalExtension − 20 µs) / 4 µs) · 3 − 3
+     *   LENGTH = ceil((TXTIME − SignalExtension − 20 µs) / 4 µs) · 3 − 3 − m
+     * m = 0 for HT and VHT; HE PPDUs subtract m so that LENGTH mod 3 tells the HE
+     * PPDU format apart (lsig.heM).
      */
     function lsigLength(cfg, tl) {
       const maxLength = use(D.lsig.maxLength, 'lsig.maxLength');
       if (cfg.gen === 'nonHT') {
         use(D.lsig.nonHtLength, 'lsig.nonHtLength');
-        return { LENGTH: cfg.payload, rule: 'psdu', maxLength, valid: cfg.payload <= maxLength };
+        return { LENGTH: cfg.payload, rule: 'psdu', m: 0, maxLength, valid: cfg.payload <= maxLength };
       }
       const r = use(D.lsig.spoofRule, 'lsig.spoofRule');
+      const format = generation(cfg.gen).ppduFormat;
+      const m = format in val(D.lsig.heM) ? use(D.lsig.heM, 'lsig.heM')[format] : 0;
       const t_us = (tl.txtime_ns - tl.signalExtension_ns) / 1000;
-      const LENGTH = Math.ceil((t_us - r.legacyPreamble) / r.symbol - 1e-9) * r.octetsPerSymbol - r.subtract;
-      return { LENGTH, rule: 'spoof', maxLength, valid: LENGTH <= maxLength };
+      const LENGTH = Math.ceil((t_us - r.legacyPreamble) / r.symbol - 1e-9) * r.octetsPerSymbol - r.subtract - m;
+      return { LENGTH, rule: 'spoof', m, maxLength, valid: LENGTH <= maxLength };
     }
 
     /* ======================================================================
@@ -394,7 +398,11 @@
       const bandwidths = g.bands[band].bandwidths || g.bandwidths;
       const guardIntervals = val(g.ofdm.guardIntervals);
       const ltfTypes = g.heLtf ? val(g.heLtf.allowedWithGi) : null;
-      return { bands, band, bandwidths, guardIntervals, ltfTypes, spatialStreams: g.spatialStreams, mcs: mcsOptions(cfg.gen) };
+      const nominalPadding = g.packetExtension ? val(g.packetExtension.nominalPacketPadding) : null;
+      // largest payload the length field allows (null = no field limit; the 5484 µs PPDU cap still applies)
+      const maxPayload = g.payloadField.max ? val(g[g.payloadField.max]) : null;
+      return { bands, band, bandwidths, guardIntervals, ltfTypes, nominalPadding, maxPayload,
+               spatialStreams: g.spatialStreams, mcs: mcsOptions(cfg.gen) };
     }
 
     /** Fill in / correct a configuration so it is valid for the chosen generation. */
@@ -421,13 +429,8 @@
       if (!m) m = o.mcs[0];
       cfg.mcs = m.mcs; cfg.mod = m.mod; cfg.R = m.R;
 
-      const g = generation(cfg.gen);
-      const maxPayload = g.maxPsduOctets ? val(g.maxPsduOctets) : Infinity;
-      cfg.payload = Math.min(maxPayload, Math.max(1, Math.round(Number(cfg.payload) || 1)));
-      if (cfg.gen === 'HE') {
-        const pads = val(generation('HE').packetExtension.nominalPacketPadding);
-        if (!pads.includes(cfg.nominalPadding)) cfg.nominalPadding = pads[pads.length - 1];
-      }
+      cfg.payload = Math.min(o.maxPayload === null ? Infinity : o.maxPayload, Math.max(1, Math.round(Number(cfg.payload) || 1)));
+      if (o.nominalPadding && !o.nominalPadding.includes(cfg.nominalPadding)) cfg.nominalPadding = o.nominalPadding[o.nominalPadding.length - 1];
       return { cfg, notes };
     }
 
@@ -443,18 +446,22 @@
         const rateDeps = [...deps].filter((d) => !d.endsWith('.encoders'));
         const sym = dataSymbols(cfg, p);
         const tl = timeline(cfg, p, sym);
-        const lsig = lsigLength(cfg, tl);
-        const maxPpdu_ns = cfg.gen === 'nonHT' ? null : ns(use(D.lsig.maxPpdu, 'lsig.maxPpdu'));
         const airtimeDeps = [...deps];
+        const lsig = lsigLength(cfg, tl);
+        // Every generation is checked against the 5484 µs cap. The signal extension is left out, as in
+        // L-SIG LENGTH: it is idle time, and a 4095-octet Non-HT PPDU at 6 Mb/s already takes exactly 5484 µs.
+        const maxPpdu_ns = ns(use(D.lsig.maxPpdu, 'lsig.maxPpdu'));
+        const lsigDeps = [...deps].filter((d) => !airtimeDeps.includes(d));
         return {
           cfg, notes, excluded,
           unverified: {
             rate: rateDeps,                // unverified entries the data rate depends on
             airtime: airtimeDeps,          // ... and the TXTIME / N_SYM (superset)
+            lsig: lsigDeps,                // ... and, in addition, the L-SIG LENGTH / PPDU-limit check
             ldpcDependent: airtimeDeps.some((d) => d.startsWith('ldpc.')),
           },
           lsig,
-          maxPpdu: { limit_ns: maxPpdu_ns, exceeded: maxPpdu_ns !== null && tl.txtime_ns - tl.signalExtension_ns > maxPpdu_ns },
+          maxPpdu: { limit_ns: maxPpdu_ns, exceeded: tl.txtime_ns - tl.signalExtension_ns > maxPpdu_ns },
           mcsIndex: displayMcs(cfg),
           params: p,
           symbols: sym,
