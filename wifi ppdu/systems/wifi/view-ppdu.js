@@ -13,7 +13,7 @@
 
   const W = 800, LEFT = 14, RIGHT = 14, PW = W - LEFT - RIGHT;
   /** Rough width of a 12 px label (for deciding whether it fits). */
-  const textWidth = (str) => str.length * 6.8;
+  const textWidth = (str) => str.length * 7.3;
   /** Centre a label over its box, but keep it inside the drawing at both edges. */
   const labelAnchor = (x, w, str) => {
     const half = (textWidth(str) * 11) / 12 / 2;
@@ -23,35 +23,70 @@
   };
   /* glossary entries for the no-transmission items that close a PPDU */
   const GAP_TERM = { 'Signal extension': 'Signal extension', 'Short GI rounding': 'Short GI' };
-  const Y1 = 46, H1 = 24, Y2 = 150, H2 = 46;
+  const H1 = 24, H2 = 46;
+  let Y2 = 150; // top of the expanded row; set per render (depends on whether the preamble inset is shown)
 
   /** @param opts { selected, symbolIndex, onField(name), onSymbol(index, rect) } */
   V.ppdu = function (a, opts) {
     const tl = a.timeline, total = tl.txtime_ns;
     const items = tl.items;
     const color = (it) => V.FIELD[it.kind] || '#94a3b8';
-    const svg = s('svg', { class: 'diagram', viewBox: `0 0 ${W} 262`, role: 'img', 'aria-label': 'PPDU timeline' });
+    const dataItem = items.find((it) => it.kind === 'data');
+    const pre_ns = dataItem.start_ns;                        // everything before the Data field
+    // magnify the preamble whenever one of its fields is too narrow to carry its name at true scale
+    const showInset = items.some((it) => it.start_ns < pre_ns && (it.dur_ns / total) * PW < textWidth(it.name) + 6);
+    const Y1 = showInset ? 122 : 44;                         // true-scale bar
+    const cTop = Y1 + H1 + 26, cBot = cTop + 58;             // connector band
+    Y2 = cBot + 52;
+    const svg = s('svg', { class: 'diagram', viewBox: `0 0 ${W} ${Y2 + H2 + 40}`, role: 'img', 'aria-label': 'PPDU timeline' });
     svg.append(s('defs', null, s('pattern', { id: 'hatch', width: 6, height: 6, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' },
       s('rect', { width: 6, height: 6, fill: '#1e293b' }), s('line', { x1: 0, y1: 0, x2: 0, y2: 6, stroke: '#64748b', 'stroke-width': 2 }))));
-
-    /* ---------- row 1: true scale ---------- */
     const tx = (ns) => LEFT + (ns / total) * PW;
-    svg.append(s('text', { x: LEFT, y: Y1 - 10, class: 'muted' }, `True time scale — `, ...svgSym('TXTIME'), ` = ${V.us(total)} µs`));
-    for (const it of items) {
-      const x0 = tx(it.start_ns), w = Math.max(0.8, tx(it.start_ns + it.dur_ns) - x0);
-      const r = s('rect', { x: x0, y: Y1, width: w, height: H1, fill: it.kind === 'gap' ? 'url(#hatch)' : color(it), stroke: '#0a0e17', 'stroke-width': 0.6 },
+    const fieldRect = (it, x0, y, w, hgt) => {
+      const r = s('rect', { x: x0, y, width: w, height: hgt, fill: it.kind === 'gap' ? 'url(#hatch)' : color(it), stroke: '#0a0e17', 'stroke-width': 0.6 },
         s('title', null, `${it.name}: ${V.us(it.dur_ns)} µs (from ${V.us(it.start_ns)} µs)`));
       if (it.kind !== 'gap') V.clickable(r, it.name, () => opts.onField(it.name));
-      svg.append(r);
+      return r;
+    };
+    const ticks = (y, x0, x1, span_ns) => {
+      const step = V.niceStep(span_ns / 1000, 8);
+      for (let t = 0; t <= span_ns / 1000 + 1e-9; t += step) {
+        const x = x0 + ((t * 1000) / span_ns) * (x1 - x0);
+        svg.append(s('line', { x1: x, x2: x, y1: y, y2: y + 5, stroke: '#a7b2c6' }));
+        if (x < x1 - 30) svg.append(s('text', { x, y: y + 17, 'text-anchor': 'middle', class: 'muted mono' }, fmt(t, 1)));
+      }
+      svg.append(s('text', { x: x1, y: y + 17, 'text-anchor': 'end', class: 'muted' }, 'µs'));
+    };
+
+    /* ---------- preamble inset (to scale, magnified) ---------- */
+    if (showInset) {
+      const YI = 22, HI = 24;
+      const ix = (ns) => LEFT + (ns / pre_ns) * PW;
+      svg.append(s('text', { x: LEFT, y: YI - 8, class: 'muted' }, `Preamble magnified ×${fmt(total / pre_ns, 1)} — to scale, ${V.us(pre_ns)} µs`));
+      for (const it of items.filter((x) => x.start_ns < pre_ns)) {
+        const x0 = ix(it.start_ns), w = ix(it.start_ns + it.dur_ns) - x0;
+        svg.append(fieldRect(it, x0, YI, w, HI));
+        if (w > textWidth(it.name) + 6) svg.append(s('text', { x: x0 + w / 2, y: YI + 16, 'text-anchor': 'middle', fill: '#04131c', 'font-weight': 600, 'pointer-events': 'none' }, it.name));
+      }
+      ticks(YI + HI, LEFT, W - RIGHT, pre_ns);
+      // funnel from the inset down to the outlined preamble on the true-scale bar
+      // (the funnel ends above the row-1 labels, then drops straight onto the outline)
+      const fy0 = YI + HI + 22, fy1 = Y1 - 26, fy2 = Y1 - 4, xa = tx(0) - 2, xb = tx(pre_ns) + 2;
+      svg.append(s('path', { d: `M${LEFT},${fy0} L${W - RIGHT},${fy0} L${xb},${fy1} L${xa},${fy1} Z`, fill: '#e6eaf2', opacity: 0.06 }),
+        s('path', { d: `M${LEFT},${fy0} L${xa},${fy1} V${fy2} M${W - RIGHT},${fy0} L${xb},${fy1} V${fy2}`, stroke: '#e6eaf2', 'stroke-width': 1, 'stroke-dasharray': '4 3', opacity: 0.7, fill: 'none' }));
+    }
+
+    /* ---------- row 1: true scale ---------- */
+    svg.append(s('text', { x: W - RIGHT, y: Y1 - 10, 'text-anchor': 'end', class: 'muted' }, `True time scale — `, ...svgSym('TXTIME'), ` = ${V.us(total)} µs`));
+    for (const it of items) {
+      const x0 = tx(it.start_ns), w = Math.max(0.8, tx(it.start_ns + it.dur_ns) - x0);
+      svg.append(fieldRect(it, x0, Y1, w, H1));
       if (w > textWidth(it.name) + 6) svg.append(s('text', { x: x0 + w / 2, y: Y1 + 16, 'text-anchor': 'middle', fill: '#04131c', 'font-weight': 600, 'pointer-events': 'none' }, it.name));
     }
-    const stepUs = V.niceStep(total / 1000, 8);
-    for (let t = 0; t <= total / 1000 + 1e-9; t += stepUs) {
-      const x = tx(t * 1000);
-      svg.append(s('line', { x1: x, x2: x, y1: Y1 + H1, y2: Y1 + H1 + 5, stroke: '#93a0b8' }));
-      if (x < W - RIGHT - 40) svg.append(s('text', { x, y: Y1 + H1 + 17, 'text-anchor': 'middle', class: 'muted mono' }, fmt(t, 1)));
-    }
-    svg.append(s('text', { x: W - RIGHT, y: Y1 + H1 + 17, 'text-anchor': 'end', class: 'muted' }, 'µs'));
+    // outline the preamble so it reads as one region even when it is thin
+    svg.append(s('rect', { x: tx(0) - 2, y: Y1 - 4, width: tx(pre_ns) - tx(0) + 4, height: H1 + 8, rx: 3, fill: 'none', stroke: '#e6eaf2', 'stroke-width': 1.4, 'stroke-dasharray': '5 3' }),
+      s('text', { x: tx(0) + 4, y: Y1 - 10, class: 'small', fill: '#e6eaf2' }, `preamble ${V.us(pre_ns)} µs`));
+    ticks(Y1 + H1, LEFT, W - RIGHT, total);
 
     /* ---------- row 2: expanded structure ---------- */
     const g = root.WifiCalc.generation(a.cfg.gen);
@@ -65,20 +100,20 @@
     const othersWidth = others.reduce((acc, it) => acc + fixedWidth(it), 0);
     const scale = Math.min(1, (PW - DATA_MIN - 4 * items.length) / othersWidth);
     const dataWidth = PW - othersWidth * scale - 4 * (items.length - 1);
-    svg.append(s('text', { x: LEFT, y: Y2 - 30, class: 'muted' }, 'Field structure (expanded, not to scale) — click a field or a Data symbol'));
+    // caption below the connector band, above the field names
+    svg.append(s('text', { x: LEFT, y: cBot + 16, class: 'muted' }, 'Field structure (expanded, not to scale) — click a field or a Data symbol'));
 
     let x = LEFT;
-    const rowItems = [];
     items.forEach((it, i) => { it.labelLevel = 0; it.index = i; });
     for (const it of items) {
       const w = it.kind === 'data' ? dataWidth : fixedWidth(it) * scale;
-      // stagger the name of a field that is narrower than its label, so neighbours do not overlap
       const afterData = it.index > 0 && items[it.index - 1].kind === 'data';
       if (it.kind !== 'data' && w < textWidth(it.name)) it.labelLevel = it.index % 2 || afterData ? 1 : 0;
-      rowItems.push({ it, x, w });
-      // connector from the true-scale bar
-      const a0 = tx(it.start_ns), a1 = tx(it.start_ns + it.dur_ns);
-      svg.append(s('path', { d: `M${a0},${Y1 + H1 + 22} L${x},${Y2 - 20} L${x + w},${Y2 - 20} L${a1},${Y1 + H1 + 22} Z`, fill: color(it), opacity: 0.07 }));
+      // connector: from the field's true-scale position to its expanded box
+      const a0 = tx(it.start_ns), a1 = Math.max(a0 + 0.8, tx(it.start_ns + it.dur_ns));
+      const c = it.kind === 'gap' ? '#64748b' : color(it);
+      svg.append(s('path', { d: `M${a0},${cTop} L${a1},${cTop} L${x + w},${cBot} L${x},${cBot} Z`, fill: c, opacity: 0.22, 'pointer-events': 'none' }),
+        s('path', { d: `M${a0},${cTop} L${x},${cBot} M${a1},${cTop} L${x + w},${cBot}`, stroke: c, 'stroke-width': 1, opacity: 0.9, fill: 'none', 'pointer-events': 'none' }));
       if (it.kind === 'data') drawData(svg, a, it, x, w, opts);
       else drawField(svg, it, x, w, fieldDef(it.name), opts, color(it));
       x += w + 4;
@@ -88,7 +123,7 @@
     return h('div', null,
       h('div', { class: 'view-head' }, h('h2', null, term('PPDU', 'PPDU'), ' — ', g.ppduFormat, ' (', g.label, ')'),
         h('span', { class: 'chip mono' }, 'TXTIME ', V.us(total), ' µs',
-          a.unverified.airtime.length ? [' ', h('span', { class: 'badge unverified', title: 'depends on: ' + a.unverified.airtime.join(', ') }, 'unverified')] : null)),
+          a.unverified.airtime.length ? [' ', h('span', { class: 'badge unverified', title: 'depends on: ' + a.unverified.airtime.map(V.depLabel).join('; ') }, 'unverified')] : null)),
       svg, dataBits(a), txtimeSum(a));
   };
 
@@ -223,7 +258,7 @@
       h('p', { class: 'small muted' }, 'The receiver can stop after segment a: the rest is ', term('Post-FEC padding', 'post-FEC padding'), '. ',
         term('T_PE'), ` = ${V.us(T_PE)} µs follows from the `, term('Nominal packet padding', 'nominal packet padding'), ` (${cfg.nominalPadding} µs) and a = ${sy.a}.`),
       a.unverified.ldpcDependent ? h('div', { class: 'notice warn' }, h('strong', null, 'Airtime depends on unverified LDPC constants: '),
-        a.unverified.airtime.filter((d) => d.startsWith('ldpc.')).join(', '), ' (codeword-length thresholds and the extra-segment factors were not found in two sources).') : null);
+        a.unverified.airtime.filter((d) => d.startsWith('ldpc.')).map(V.depLabel).join('; '), ' (codeword-length thresholds and the extra-segment factors were not found in two sources).') : null);
   }
 
   /** TXTIME as the sum of the timeline items. */

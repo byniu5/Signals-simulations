@@ -44,6 +44,55 @@
     return names.T_DFT || 'T_DFT';
   };
 
+  /**
+   * Readable name for a data path recorded by WifiCalc's dependency tracking,
+   * e.g. 'generations.HT.fields[HT-SIG].duration' → '802.11n: HT-SIG duration'.
+   */
+  V.depLabel = (path) => {
+    const D = root.WifiCalc.data;
+    let m = path.match(/^generations\.(\w+)\.(.+)$/);
+    if (m) {
+      const gen = D.generations[m[1]] ? D.generations[m[1]].label + ': ' : '';
+      const rest = m[2];
+      const rules = [
+        [/^fields\[(.+)\]\.duration$/, (x) => `${x[1]} duration`],
+        [/^fields\[(.+)\]\.durationEach$/, (x) => `${x[1]} symbol duration`],
+        [/^encoders$/, () => 'number of BCC encoders (N_ES rule)'],
+        [/^N_LTF$/, () => 'number of long-training symbols (N_LTF per N_SS)'],
+        [/^dataField\.N_DBPS_rounding$/, () => 'rounding of a fractional N_DBPS (floor)'],
+        [/^dataField\.N_SD_short$/, () => 'N_SD,short table'],
+        [/^dataField\.(\w+)$/, (x) => `${x[1]} of the Data field`],
+        [/^toneplan\.(\d+)\.(\w+)$/, (x) => `${x[2]} of the ${x[1]} MHz tone plan`],
+        [/^ofdm\.(\w+)$/, (x) => `OFDM parameter ${x[1]}`],
+        [/^heLtf\.symbolWithoutGi$/, () => 'HE-LTF symbol duration (1x/2x/4x)'],
+        [/^packetExtension\.T_PE$/, () => 'packet extension duration table (T_PE)'],
+        [/^padding\.equations$/, () => 'pre-FEC padding equations'],
+        [/^txtime\.shortGiRounding$/, () => 'short-GI rounding of TXTIME'],
+        [/^txtime\.legacySymbol$/, () => 'legacy 4 µs symbol for TXTIME rounding'],
+        [/^exclusions$/, () => 'excluded MCS / bandwidth / N_SS combinations'],
+        [/^resourceUnits\.(\w+)$/, (x) => `resource-unit ${x[1]}`],
+      ];
+      for (const [re, f] of rules) { const x = rest.match(re); if (x) return gen + f(x); }
+      return gen + rest;
+    }
+    const fixed = {
+      'ldpc.codewordTable': 'LDPC codeword table (N_CW, L_LDPC thresholds)',
+      'ldpc.extraSymbolCondition': 'LDPC extra-symbol condition (0.1 / 1.2 factors)',
+      'lsig.nonHtLength': 'L-SIG LENGTH rule for Non-HT (PSDU length)',
+      'lsig.spoofRule': 'L-SIG LENGTH rule for HT / VHT / HE',
+      'lsig.heM': 'L-SIG LENGTH offset m for HE',
+      'lsig.maxLength': 'maximum L-SIG LENGTH',
+      'lsig.maxPpdu': 'maximum PPDU duration',
+      'interframe.signalExtension': 'signal extension (2.4 GHz)',
+      'legacy.phaseRotationDeg': 'per-20 MHz phase rotation',
+      'mcsTable': 'MCS table',
+    };
+    if (fixed[path]) return fixed[path];
+    m = path.match(/^modulations\.(.+)\.N_BPSCS$/);
+    if (m) return `N_BPSCS of ${m[1]}`;
+    return path;
+  };
+
   /** Keyboard + mouse activation for clickable SVG shapes. */
   V.clickable = (el, label, handler) => {
     el.setAttribute('class', ((el.getAttribute('class') || '') + ' clickable').trim());

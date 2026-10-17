@@ -81,16 +81,35 @@
       ...dim(LEFT, xEnd, 294, [...svgSym('T_SYM'), ` = ${V.us(p.T_GI_ns)} + ${V.us(p.T_DFT_ns)} = ${V.us(T)} µs`], 'T_SYM'));
     svg.append(s('text', { x: LEFT - 8, y: MID + 4, 'text-anchor': 'end', class: 'muted' }, 'Re'));
 
-    // --- constellation of this symbol
-    const cons = s('svg', { class: 'diagram constellation', viewBox: '0 0 220 220', role: 'img', 'aria-label': 'Constellation points of this symbol' },
-      s('line', { x1: 10, x2: 210, y1: 110, y2: 110, stroke: '#2b3a57' }), s('line', { x1: 110, x2: 110, y1: 10, y2: 210, stroke: '#2b3a57' }));
+    // --- constellation of this symbol: ideal grid, I/Q axes with ticks, data (blue) and pilot (amber) points
+    const grid = Dsp.constellation(p.N_BPSCS);
     const used = values.filter((v) => v.z);
-    const lim = Math.max(1.2, ...used.map((v) => Math.max(Math.abs(v.z.re), Math.abs(v.z.im)))) * 1.1;
+    const lim = Math.max(1.2, ...used.map((v) => Math.max(Math.abs(v.z.re), Math.abs(v.z.im)))) * 1.12;
+    const CS = 300, CC = 162, CR = 112; // viewBox size, plot centre, plot radius (px)
+    const cx = (re) => CC + (re / lim) * CR, cy = (im) => CC - 14 - (im / lim) * CR;
+    const fx0 = CC - CR - 10, fx1 = CC + CR + 10, fy0 = cy(0) - CR - 10, fy1 = cy(0) + CR + 10;
+    const cons = s('svg', { class: 'diagram constellation sym-cons', viewBox: `0 0 ${CS} ${CS + 14}`, role: 'img', 'aria-label': `Constellation points of this symbol (${a.cfg.mod})` },
+      s('rect', { x: fx0, y: fy0, width: fx1 - fx0, height: fy1 - fy0, fill: 'none', stroke: '#3b4a66' }),
+      s('line', { x1: fx0, x2: fx1, y1: cy(0), y2: cy(0), stroke: '#2b3a57' }),
+      s('line', { x1: cx(0), x2: cx(0), y1: fy0, y2: fy1, stroke: '#2b3a57' }),
+      s('text', { x: (fx0 + fx1) / 2, y: fy1 + 30, 'text-anchor': 'middle', class: 'muted' }, 'I (in-phase)'),
+      s('text', { x: 12, y: cy(0), 'text-anchor': 'middle', class: 'muted', transform: `rotate(-90 12 ${cy(0)})` }, 'Q (quadrature)'));
+    // ticks on the frame, outside the point cloud
+    for (const t of [-1, 0, 1]) {
+      const lab = t > 0 ? '+1' : t < 0 ? '−1' : '0';
+      cons.append(s('line', { x1: cx(t), x2: cx(t), y1: fy1, y2: fy1 + 4, stroke: '#a7b2c6' }),
+        s('text', { x: cx(t), y: fy1 + 16, 'text-anchor': 'middle', class: 'muted mono small' }, lab),
+        s('line', { x1: fx0 - 4, x2: fx0, y1: cy(t), y2: cy(t), stroke: '#a7b2c6' }),
+        s('text', { x: fx0 - 6, y: cy(t) + 4, 'text-anchor': 'end', class: 'muted mono small' }, lab));
+    }
+    const rDot = grid.length > 256 ? 1.3 : grid.length > 64 ? 2 : 3;
+    for (const z of grid) cons.append(s('circle', { cx: cx(z.re), cy: cy(z.im), r: rDot, fill: 'none', stroke: '#3b4a66', 'stroke-width': 0.8 }));
     for (const v of used) {
       const c = v.kind === 'pilot' ? V.KIND.pilot.color : V.KIND.data.color;
-      cons.append(s('circle', { cx: 110 + (v.z.re / lim) * 98, cy: 110 - (v.z.im / lim) * 98, r: v.kind === 'pilot' ? 4 : 2.6, fill: c },
+      cons.append(s('circle', { cx: cx(v.z.re), cy: cy(v.z.im), r: v.kind === 'pilot' ? rDot + 2.5 : rDot + 0.4, fill: c, stroke: v.kind === 'pilot' ? '#111827' : 'none' },
         s('title', null, `k = ${V.signed(v.k, 0)}: ${fmt(v.z.re, 3)} ${v.z.im < 0 ? '−' : '+'} j${fmt(Math.abs(v.z.im), 3)}`)));
     }
+    cons.append(s('text', { x: fx0, y: fy0 - 6, class: 'muted small' }, `${a.cfg.mod} · ${grid.length} points, unit average power`));
 
     // --- header, stepper, explanation
     const step = (d) => opts.onIndex(Math.min(nSym, Math.max(1, index + d)));
@@ -107,8 +126,12 @@
       'sample rate = ', term('FFT size', root.Dom.sym('N_FFT')), ' · ', term('Δ_F'), ` = ${N} × ${fmt(p.spacingKHz, 3)} kHz = ${fmt(fsMHz, 3)} Msample/s  →  `,
       term('Guard interval', 'GI'), ` = ${fmt(cpSamples, 2)} samples, useful part = ${fmt(fftSamples, 2)} samples`);
 
-    const side = h('div', null, cons,
-      h('p', { class: 'muted small' }, 'Points sent in this symbol: ', a.dataTones.N_SD, ' data subcarriers (',
+    const side = h('figure', { class: 'cons-fig' }, cons,
+      h('div', { class: 'chips small' },
+        h('span', { class: 'chip' }, h('i', { style: { background: V.KIND.data.color } }), term('Data subcarrier', 'data'), ' ' + a.dataTones.N_SD),
+        h('span', { class: 'chip' }, h('i', { style: { background: V.KIND.pilot.color } }), term('Pilot subcarrier', 'pilot'), ' ' + a.dataTones.N_SP),
+        h('span', { class: 'chip' }, h('i', { style: { background: 'transparent', border: '1px solid #3b4a66' } }), 'ideal points')),
+      h('figcaption', { class: 'small' }, 'Points sent in this symbol: ', a.dataTones.N_SD, ' data subcarriers (',
         term('Constellation mapping', a.cfg.mod), ') and ', a.dataTones.N_SP, ' pilots (amber). Each point is the complex amplitude of one subcarrier.'));
 
     const explain = h('div', { class: 'explain' },

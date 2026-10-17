@@ -33,6 +33,7 @@
       cfg: C.normalize(shared.cfg).cfg,
       level: shared.level, symbolIndex: 1, field: 'data', selected: null,
       ru: null, // RU size of the HE MU / TB overlay on the subcarrier map (null = off)
+      mapWindow: null, // first subcarrier of the 64-subcarrier zoom window (wide FFTs)
     };
     let a = C.analyze(state.cfg);
 
@@ -44,11 +45,21 @@
     const checks = h('section', { class: 'panel', style: { marginTop: '16px' } });
     container.append(h('div', { class: 'ppdu-mode' }, controls, h('section', { class: 'stage-wrap' }, crumbs, stageEl, info), outputs), checks);
     const stage = root.Zoom.stage(stageEl);
+    // the output panel scrolls on its own and always ends inside the window, wherever it currently sits
+    const fitOutputs = () => {
+      if (!outputs.isConnected) { removeEventListener('scroll', fitOutputs); removeEventListener('resize', fitOutputs); return; }
+      const top = Math.max(12, outputs.getBoundingClientRect().top);
+      outputs.style.setProperty('--out-max', `${Math.max(240, innerHeight - top - 12)}px`);
+    };
+    addEventListener('scroll', fitOutputs, { passive: true });
+    addEventListener('resize', fitOutputs);
+    requestAnimationFrame(fitOutputs);
 
     /* ---------- views ---------- */
     const renderer = (level) => (el) => {
       if (level === 'subcarriers') el.append(V.frequency(a, { field: state.field, onField: (f) => { state.field = f; redraw(); },
-        ru: state.ru, onRu: (size) => { state.ru = size; redraw(); } }));
+        ru: state.ru, onRu: (size) => { state.ru = size; redraw(); },
+        windowStart: state.mapWindow, onWindow: (k) => { state.mapWindow = k; redraw(); } }));
       else if (level === 'symbol') el.append(V.symbol(a, { index: state.symbolIndex, onIndex: (i) => { state.symbolIndex = i; redraw(); }, onZoomIn: (r) => go('subcarriers', r) }));
       else el.append(V.ppdu(a, { selected: state.selected, symbolIndex: state.symbolIndex,
         onField: (name) => { state.selected = name; redraw(); },

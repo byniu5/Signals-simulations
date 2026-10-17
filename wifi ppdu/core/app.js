@@ -37,7 +37,7 @@
       tabs.replaceChildren(...sys.modes.map((m) => h('button', {
         type: 'button', role: 'tab', 'data-mode': m.id, disabled: !!m.disabled,
         title: m.disabled || '', onclick: () => select(m),
-      }, m.label, m.disabled ? h('span', { class: 'soon' }, m.disabledShort || 'soon') : null)));
+      }, m.label, m.disabled ? h('span', { class: 'soon' }, 'coming soon') : null)));
       select(active);
     }
 

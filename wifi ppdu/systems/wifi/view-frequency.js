@@ -14,7 +14,8 @@
 
   /**
    * @param a     analysis from WifiCalc.analyze
-   * @param opts  { field: 'data' | 'legacy', onField(field), ru: RU size | null, onRu(size) }
+   * @param opts  { field: 'data' | 'legacy', onField(field), ru: RU size | null, onRu(size),
+   *                windowStart: first k of the zoom window | null, onWindow(k) }
    */
   V.frequency = function (a, opts) {
     const C = root.WifiCalc;
@@ -97,12 +98,29 @@
       for (const l of pilotLabels) svg.append(s('text', { x: l.x, y: BASE - H_PILOT - 8, 'text-anchor': 'middle', class: 'mono', fill: V.KIND.pilot.color }, V.signed(l.k, 0)));
     }
 
-    // guard brackets
+    // guard and DC brackets (the DC subcarriers are listed one by one when there are only a few)
     for (const r of V.runs(tones)) {
-      if (r.kind !== 'guard') continue;
+      if (r.kind !== 'guard' && r.kind !== 'dc') continue;
       const x0 = X(r.from) - px / 2, x1 = X(r.to) + px / 2, y = BASE + 46;
-      svg.append(s('path', { d: `M${x0},${y - 4} V${y} H${x1} V${y - 4}`, fill: 'none', stroke: V.KIND.guard.color }),
-        s('text', Object.assign({ y: y + 14, class: 'muted small' }, anchor((x0 + x1) / 2)), `guard ${V.signed(r.from, 0)}…${V.signed(r.to, 0)} (${r.n})`));
+      const label = r.kind === 'guard' ? `guard ${V.signed(r.from, 0)}…${V.signed(r.to, 0)} (${r.n})`
+        : r.n <= 5 ? `DC (${Array.from({ length: r.n }, (_, i) => V.signed(r.from + i, 0)).join(', ')})` : `DC ${V.signed(r.from, 0)}…${V.signed(r.to, 0)} (${r.n})`;
+      svg.append(s('path', { d: `M${x0},${y - 4} V${y} H${x1} V${y - 4}`, fill: 'none', stroke: V.KIND[r.kind].color }),
+        s('text', Object.assign({ y: y + 14, class: 'muted small' }, anchor((x0 + x1) / 2)), label));
+    }
+
+    // zoom window: when one bar per subcarrier does not fit, show 64 subcarriers at a time below
+    const WIN = 64;
+    const needWindow = px < 4;
+    const k0 = needWindow ? Math.max(-fft / 2, Math.min(fft / 2 - WIN, opts.windowStart ?? -WIN / 2)) : null;
+    if (needWindow) {
+      svg.append(s('rect', { x: X(k0) - px / 2, y: 30, width: WIN * px, height: BASE - 26, fill: 'rgba(230,234,242,.06)', stroke: '#e6eaf2', 'stroke-width': 1.2, 'stroke-dasharray': '4 3', 'pointer-events': 'none' }));
+      // click anywhere on the overview to centre the zoom window there
+      svg.style.cursor = 'zoom-in';
+      svg.addEventListener('click', (ev) => {
+        const r = svg.getBoundingClientRect();
+        const k = Math.round(((ev.clientX - r.left) / r.width) * W / px - LEFT / px - fft / 2 - 0.5);
+        opts.onWindow && opts.onWindow(k - WIN / 2);
+      });
     }
     svg.append(s('text', { x: LEFT, y: 290, class: 'muted' }, 'subcarrier index k (top) and frequency offset k·Δ_F from the channel centre (bottom)'));
 
@@ -170,13 +188,47 @@
           ltf ? ['. The ', term('HE-LTF type', `${ltf.ltf} HE-LTF`), ltfStep > 1 ? ` uses every ${ltfStep === 2 ? 'second' : ltfStep === 4 ? 'fourth' : ltfStep + 'th'} subcarrier, so its symbol repeats after ${V.us(ltf.symbol_ns)} µs and only that is sent` : ' uses every subcarrier for the full symbol'] : '',
           '. Click the OFDM symbol step above to see the same symbol in time.'));
 
-    return h('div', null, head, chips, ruBar, h('div', { style: { margin: '8px 0' } }, svg), facts, ruNote, explain);
+    const zoom = needWindow ? zoomWindow(map, k0, WIN, opts) : null;
+    return h('div', null, head, chips, ruBar, h('div', { style: { margin: '8px 0' } }, svg), zoom, facts, ruNote, explain);
   };
 
   /** "2×996" for the RU that covers a whole 160 MHz channel (two 80 MHz halves). */
   function sizeLabel(size) {
     const whole = root.WifiCalc.data.generations.HE.resourceUnits.layout160.value.wholeChannel.size;
     return size === whole ? `2×${whole / 2}` : String(size);
+  }
+
+  /** 64 subcarriers drawn one by one, with their indices — the magnified part of the overview. */
+  function zoomWindow(map, k0, WIN, opts) {
+    const H = 150, B = 112;
+    const px = PW / WIN, fft = map.fft, dfKHz = map.spacingKHz;
+    const X = (k) => LEFT + (k - k0 + 0.5) * px;
+    const svg = s('svg', { class: 'diagram', viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': `Subcarriers ${k0} to ${k0 + WIN - 1}` });
+    const tones = map.tones.filter((t) => t.k >= k0 && t.k < k0 + WIN);
+    for (const t of tones) {
+      const k = V.KIND[t.kind], x = X(t.k), w = px * 0.6;
+      const title = s('title', null, `k = ${V.signed(t.k, 0)} · ${V.signed((t.k * dfKHz) / 1000, 4)} MHz · ${k.term.toLowerCase()}`);
+      const hgt = t.kind === 'pilot' ? 84 : t.kind === 'data' ? 66 : 10;
+      svg.append(s('rect', { x: x - w / 2, y: B - hgt, width: w, height: hgt, rx: 1.5, fill: k.color, opacity: t.kind === 'guard' ? 0.8 : 1 }, title));
+    }
+    svg.append(s('line', { x1: LEFT, x2: W - RIGHT, y1: B + 0.5, y2: B + 0.5, stroke: '#a7b2c6' }));
+    for (let k = k0; k < k0 + WIN; k++) {
+      if (((k % 8) + 8) % 8) continue;
+      svg.append(s('line', { x1: X(k), x2: X(k), y1: B, y2: B + 5, stroke: '#a7b2c6' }),
+        s('text', { x: X(k), y: B + 18, 'text-anchor': 'middle', class: 'mono' }, V.signed(k, 0)));
+    }
+    for (const t of tones) if (t.kind === 'pilot') svg.append(s('text', { x: X(t.k), y: B - 90, 'text-anchor': 'middle', class: 'mono', fill: V.KIND.pilot.color }, V.signed(t.k, 0)));
+    svg.append(s('text', { x: LEFT, y: H - 4, class: 'muted small' }, `${V.signed((k0 * dfKHz) / 1000, 4)} MHz`),
+      s('text', { x: W - RIGHT, y: H - 4, 'text-anchor': 'end', class: 'muted small' }, `${V.signed(((k0 + WIN - 1) * dfKHz) / 1000, 4)} MHz`));
+    const move = (d) => opts.onWindow && opts.onWindow(Math.max(-fft / 2, Math.min(fft / 2 - WIN, k0 + d)));
+    return h('div', { class: 'zoom-window' },
+      h('div', { class: 'view-head' },
+        h('h3', null, `Zoom: subcarriers ${V.signed(k0, 0)} … ${V.signed(k0 + WIN - 1, 0)}`, h('span', { class: 'muted small' }, ` (${WIN} of ${fft}, dashed box above)`)),
+        h('div', { class: 'chips' },
+          h('button', { type: 'button', onclick: () => move(-WIN / 2), disabled: k0 <= -fft / 2, 'aria-label': 'Move the zoom window left' }, '◀'),
+          h('button', { type: 'button', onclick: () => opts.onWindow && opts.onWindow(-WIN / 2) }, 'centre'),
+          h('button', { type: 'button', onclick: () => move(WIN / 2), disabled: k0 >= fft / 2 - WIN, 'aria-label': 'Move the zoom window right' }, '▶'))),
+      svg);
   }
 
   function rotationLabel(deg) {
@@ -193,7 +245,7 @@
         s('rect', { x: x - w / 2, y: BASE - H_PILOT, width: w, height: H_PILOT, fill: k.color }),
         px >= 4 ? s('circle', { cx: x, cy: BASE - H_PILOT, r: Math.min(4, px / 2), fill: k.color }) : null);
     }
-    if (t.kind === 'dc') return s('circle', { cx: x, cy: BASE - 6, r: Math.max(2, Math.min(4, px / 2.5)), fill: 'none', stroke: k.color, 'stroke-width': 1.6 }, title);
+    if (t.kind === 'dc') return s('rect', { x: x - Math.max(1, px * 0.3), y: BASE - 14, width: Math.max(2, px * 0.6), height: 14, fill: k.color }, title);
     return s('line', { x1: x, x2: x, y1: BASE - 12, y2: BASE, stroke: k.color, 'stroke-width': Math.max(1, Math.min(2, px * 0.4)) }, title);
   }
 

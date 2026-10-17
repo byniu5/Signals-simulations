@@ -8,7 +8,11 @@
   V.outputs = function (a) {
     const p = a.params, sy = a.symbols, tName = V.tUsefulName(a);
     const ltfItem = a.timeline.items.find((i) => i.count && i.kind === 'training');
-    const row = (label, value, formula) => h('tr', null, h('td', null, label, formula ? h('div', { class: 'f' }, formula) : null), h('td', null, value));
+    // label and value share a line; the formula gets its own full-width line underneath (no cramped wrapping)
+    const row = (label, value, formula) => [
+      h('tr', { class: formula ? 'has-f' : null }, h('td', null, label), h('td', null, value)),
+      formula ? h('tr', { class: 'f-row' }, h('td', { class: 'f', colspan: 2 }, formula)) : null,
+    ];
     const rows = [
       row(term('FFT size'), p.N_FFT),
       row(term('Δ_F'), fmt(p.spacingKHz, 3) + ' kHz'),
@@ -40,14 +44,16 @@
       row(h('span', null, 'L-SIG ', term('LENGTH')), a.lsig.LENGTH,
         a.lsig.rule === 'psdu' ? 'PSDU length'
           : `ceil((${V.us(a.timeline.txtime_ns - a.timeline.signalExtension_ns)} − 20)/4)·3 − 3` + (a.lsig.m ? ` − m (m = ${a.lsig.m})` : '')),
-    ].flat();
+    ].flat(2).filter(Boolean);
     const u = a.unverified;
+    const deps = (list) => h('ul', { class: 'deps' }, list.map((d) => h('li', { title: d }, V.depLabel(d))));
     const notice = u.airtime.length || u.lsig.length
       ? h('div', { class: 'notice warn' },
         u.ldpcDependent ? h('strong', null, 'Airtime depends on unverified LDPC constants. ') : null,
-        u.rate.length ? h('div', null, 'Data rate depends on unverified data: ', u.rate.join(', ')) : null,
-        u.airtime.length ? h('div', null, 'TXTIME / N_SYM depend on unverified data: ', u.airtime.join(', ')) : null,
-        u.lsig.length ? h('div', null, 'L-SIG LENGTH depends on unverified data: ', u.lsig.join(', ')) : null)
+        u.rate.length ? h('div', null, 'Data rate depends on unverified data:', deps(u.rate)) : null,
+        u.airtime.length ? h('div', null, 'TXTIME / N_SYM depend on unverified data:', deps(u.airtime)) : null,
+        u.lsig.length ? h('div', null, 'L-SIG LENGTH depends on unverified data:', deps(u.lsig)) : null,
+        h('div', { class: 'small' }, 'Hover an item for its key in standards-data.js; details in VERIFICATION.md.'))
       : h('div', { class: 'notice ok' }, 'No unverified data is used for these numbers (every input is supported or derived).');
     const problems = [];
     if (a.excluded) problems.push(`This MCS / bandwidth / N_SS combination is not defined in the VHT-MCS tables (${a.excluded.note}${a.excluded.status === 'unverified' ? ' — unverified' : ''}).`);
@@ -69,7 +75,8 @@
       h('h2', null, `Check table — ${passed}/${results.length} pass`),
       h('p', { class: 'small muted' }, 'Published data rates against the calculators. HE rows compare with the exact N_SD·N_BPSCS·R·N_SS/T_SYM (±0.1 Mb/s); published HE tables differ in rounding. "Reference" is the status of the published value itself.'),
       h('div', { style: { overflowX: 'auto' } }, h('table', null,
-        h('thead', null, h('tr', null, ['PHY', 'BW', 'GI', 'N_SS', 'MCS / rate', 'published', 'reference', 'computed', 'exact', ''].map((x) => h('th', null, x)))),
+        h('thead', null, h('tr', null, [['PHY'], ['BW (MHz)', 1], ['GI (µs)', 1], ['N_SS', 1], ['MCS / rate'], ['published (Mb/s)', 1], ['reference'], ['computed (Mb/s)', 1], ['exact (Mb/s)', 1], ['result']]
+          .map(([x, num]) => h('th', { class: num ? 'num' : null }, x)))),
         h('tbody', null, results.map((r) => {
           const g = D.generations[r.row.gen];
           return h('tr', null,
