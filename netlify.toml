@@ -1,0 +1,5 @@
+# Netlify: build the same site layout that the GitHub Pages workflow publishes.
+# Settings in this file override whatever is set in the Netlify dashboard.
+[build]
+  command = "bash .github/scripts/stage-site.sh _site"
+  publish = "_site"
